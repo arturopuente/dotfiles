@@ -11,5 +11,5 @@ function take {
 }
 
 #Ruby
-alias rake="bundle exec rake"
+alias rage="bundle exec rake"
 alias gemi="rvm gem install --no-rdoc --no-ri"
