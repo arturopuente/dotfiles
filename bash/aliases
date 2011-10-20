@@ -1,4 +1,15 @@
+alias l="ls -lah"
+alias ..="cd .."
+alias cda="cd ~/dev/apps"
+
+alias reload="source ~/dev/dotfiles/bash/aliases"
+alias ealias="mvim ~/dev/dotfiles/bash/aliases && reload"
+
 function take {
-	mkdir $1
-	cd $1
+  mkdir $1
+  cd $1
 }
+
+#Ruby
+alias rake="bundle exec rake"
+alias gemi="rvm gem install --no-rdoc --no-ri"
