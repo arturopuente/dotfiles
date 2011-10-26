@@ -3,6 +3,7 @@ alias ..="cd .."
 alias cda="cd ~/dev/apps"
 
 alias reload="source ~/dev/dotfiles/bash/aliases"
+alias epath="mvim ~/dev/dotfiles/bash/env && reload"
 alias ealias="mvim ~/dev/dotfiles/bash/aliases && reload"
 
 function take {
@@ -10,6 +11,9 @@ function take {
   cd $1
 }
 
-#Ruby
+# Ruby
 alias rage="bundle exec rake"
-alias gemi="rvm gem install --no-rdoc --no-ri"
+alias gemi="gem install --no-rdoc --no-ri"
+
+# Postgres
+alias pgst="postgres -D /usr/local/var/postgres"
