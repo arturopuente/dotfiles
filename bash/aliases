@@ -1,6 +1,7 @@
 alias l="ls -lah"
 alias ..="cd .."
 alias cda="cd ~/dev/apps"
+alias cdd="cd ~/Downloads"
 
 alias reload="source ~/dev/dotfiles/bash/aliases"
 alias epath="mvim ~/dev/dotfiles/bash/env && reload"
@@ -17,3 +18,11 @@ alias gemi="gem install --no-rdoc --no-ri"
 
 # Postgres
 alias pgst="postgres -D /usr/local/var/postgres"
+
+# Trash
+alias trash="mv $1 ~/.Trash"
+
+# Git
+parse_git_branch() {
+  git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/(\1)/'
+}
