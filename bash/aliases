@@ -32,9 +32,20 @@ function extract {
   fi
 }
 
+function jump {
+  local si="$IFS";
+  IFS=$'\n';
+  local newDir=$(JUMPPROFILE=1 command jump "$@");
+  cd "$newDir";
+  IFS="$si";
+}
+alias j="jump -a"
+
 # Ruby
+alias b="bundle exec"
 alias rage="bundle exec rake"
 alias gemi="gem install --no-rdoc --no-ri"
+alias irb="irb --simple-prompt"
 
 # Postgres
 alias pgst="postgres -D /usr/local/var/postgres"
@@ -43,9 +54,23 @@ alias pgst="postgres -D /usr/local/var/postgres"
 alias trash="mv $1 ~/.Trash"
 
 # Git
-parse_git_branch() {
-  git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/(\1)/'
+function gc {
+  git commit -a -m "$@"
 }
 
-# General
+alias cko="git checkout"
+alias gs="git status"
+
+# Start Compass
 alias cw="compass watch"
+
+# Get your public IP address
+alias ip="dig +short myip.opendns.com @resolver1.opendns.com"
+
+# Show/hide hidden files in Finder
+alias showfinder="defaults write com.apple.Finder AppleShowAllFiles -bool true && killall Finder"
+alias hidefinder="defaults write com.apple.Finder AppleShowAllFiles -bool false && killall Finder"
+
+# Hide/show all desktop icons (useful when presenting)
+alias hidedesktop="defaults write com.apple.finder CreateDesktop -bool false && killall Finder"
+alias showdesktop="defaults write com.apple.finder CreateDesktop -bool true && killall Finder"
