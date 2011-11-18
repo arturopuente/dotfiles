@@ -4,8 +4,8 @@ alias cda="cd ~/dev/apps"
 alias cdd="cd ~/Downloads"
 
 alias reload="source ~/dev/dotfiles/bash/aliases"
-alias epath="mvim ~/dev/dotfiles/bash/env && reload"
-alias ealias="mvim ~/dev/dotfiles/bash/aliases && reload"
+alias epath="mate ~/dev/dotfiles/bash/env && reload"
+alias ealias="mate ~/dev/dotfiles/bash/aliases && reload"
 
 function take {
   mkdir $1
@@ -54,12 +54,10 @@ alias pgst="postgres -D /usr/local/var/postgres"
 alias trash="mv $1 ~/.Trash"
 
 # Git
-function gc {
-  git commit -a -m "$@"
-}
-
+alias gc="git commit -a -m $@"
 alias cko="git checkout"
 alias gs="git status"
+alias gaa="git add ."
 
 # Start Compass
 alias cw="compass watch"
@@ -74,3 +72,6 @@ alias hidefinder="defaults write com.apple.Finder AppleShowAllFiles -bool false 
 # Hide/show all desktop icons (useful when presenting)
 alias hidedesktop="defaults write com.apple.finder CreateDesktop -bool false && killall Finder"
 alias showdesktop="defaults write com.apple.finder CreateDesktop -bool true && killall Finder"
+
+# Awesome song
+alias osomg="osascript -e 'say \"Dum dum dum dum dum dum dum he he he ho ho ho fa lah lah lah lah lah lah fa lah full hoo hoo hoo\" using \"Cellos\"'"
