@@ -63,7 +63,7 @@ alias gaa="git add ."
 alias cw="compass watch"
 
 # Get your public IP address
-alias ip="dig +short myip.opendns.com @resolver1.opendns.com"
+alias ip="curl ifconfig.me"
 
 # Show/hide hidden files in Finder
 alias showfinder="defaults write com.apple.Finder AppleShowAllFiles -bool true && killall Finder"
