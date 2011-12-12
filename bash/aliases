@@ -2,10 +2,11 @@ alias l="ls -lah"
 alias ..="cd .."
 alias cda="cd ~/dev/apps"
 alias cdd="cd ~/Downloads"
+alias cdh="cd ~/dev/apps/Hashi"
 
 alias reload="source ~/dev/dotfiles/bash/aliases"
-alias epath="mate ~/dev/dotfiles/bash/env && reload"
-alias ealias="mate ~/dev/dotfiles/bash/aliases && reload"
+alias epath="subl ~/dev/dotfiles/bash/env && reload"
+alias ealias="subl ~/dev/dotfiles/bash/aliases && reload"
 
 function take {
   mkdir $1
@@ -76,3 +77,5 @@ alias showdesktop="defaults write com.apple.finder CreateDesktop -bool true && k
 
 # Awesome song
 alias osomg="osascript -e 'say \"Dum dum dum dum dum dum dum he he he ho ho ho fa lah lah lah lah lah lah fa lah full hoo hoo hoo\" using \"Cellos\"'"
+
+alias flush="dscacheutil -flushcache"
