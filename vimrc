@@ -5,6 +5,8 @@ call pathogen#runtime_append_all_bundles()
 set nocompatible
 syntax on
 
+let mapleader=","
+
 set gfn=Monaco:h18
 set go-=T
 set go-=M
@@ -34,3 +36,7 @@ set laststatus=2
 set ignorecase
 set smartcase
 
+set expandtab
+set tabstop=2
+set shiftwidth=2
+set softtabstop=2

@@ -43,10 +43,12 @@ function jump {
 alias j="jump -a"
 
 # Ruby
-alias b="bundle exec"
+alias bx="bundle exec"
 alias rage="bundle exec rake"
 alias gemi="gem install --no-rdoc --no-ri"
 alias irb="irb --simple-prompt"
+alias ra="rails s"
+alias repow="touch tmp/restart.txt"
 
 # Postgres
 alias pgst="postgres -D /usr/local/var/postgres"
@@ -60,6 +62,7 @@ alias cko="git checkout"
 alias gs="git status"
 alias gaa="git add ."
 alias gds="git diff --stat"
+alias gdiff="git difftool -y -t Kaleidoscope"
 
 # Start Compass
 alias cw="compass watch"
@@ -79,3 +82,4 @@ alias showdesktop="defaults write com.apple.finder CreateDesktop -bool true && k
 alias osomg="osascript -e 'say \"Dum dum dum dum dum dum dum he he he ho ho ho fa lah lah lah lah lah lah fa lah full hoo hoo hoo\" using \"Cellos\"'"
 
 alias flush="dscacheutil -flushcache"
+
