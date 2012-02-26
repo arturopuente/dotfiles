@@ -2,6 +2,9 @@
   name = Arturo Puente
   email = arturopuentevc@gmail.com
 
+[github]
+  user = arturopuente
+
 [alias] 
   browse = !hub browse
   w      = !hub browse
