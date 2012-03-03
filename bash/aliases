@@ -57,10 +57,8 @@ alias pgst="postgres -D /usr/local/var/postgres"
 alias trash="mv $1 ~/.Trash"
 
 # Git
-alias gc="git commit $@"
-alias cko="git checkout"
+alias g="git"
 alias gs="git status"
-alias gaa="git add ."
 alias gds="git diff --stat"
 alias gdiff="git difftool -y -t Kaleidoscope"
 
