@@ -1,12 +1,13 @@
-alias l="ls -lAhF"
+alias l="ls -lAh"
+alias la="ls -A"
 alias ..="cd .."
 alias cda="cd ~/dev/apps"
 alias cdd="cd ~/Downloads"
 alias cdh="cd ~/dev/apps/Hashi"
 
-alias reload="source ~/dev/dotfiles/bash/aliases"
-alias epath="subl ~/dev/dotfiles/bash/env && reload"
-alias ealias="subl ~/dev/dotfiles/bash/aliases && reload"
+alias reload="source ~/dev/dotfiles/zsh/aliases"
+alias epath="subl ~/dev/dotfiles/zsh/env && reload"
+alias ealias="subl ~/dev/dotfiles/zsh/aliases && reload"
 
 function take {
   mkdir $1
@@ -48,7 +49,6 @@ alias rage="bundle exec rake"
 alias gemi="gem install --no-rdoc --no-ri"
 alias irb="irb --simple-prompt"
 alias ra="rails s"
-alias rae="rails s -e production"
 alias repow="touch tmp/restart.txt"
 
 # Postgres
@@ -84,3 +84,6 @@ alias flush="dscacheutil -flushcache"
 
 # iOS 
 alias ios="open /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Applications/iPhone\ Simulator.app"
+
+# OS X
+alias gcc42="CC=/usr/bin/gcc-4.2"

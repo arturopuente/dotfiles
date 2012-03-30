@@ -9,6 +9,7 @@
   browse = !hub browse
   w      = !hub browse
   compare = !hub compare
+  c = commit -am
   ci = commit
   cm = commit -m
   amend = commit --amend  
@@ -27,7 +28,7 @@
   spull = !git-svn fetch && git-svn rebase
   spush = !git-svn dcommit
   safe-merge = merge --no-commit --no-ff
-  edit-unmerged = "!f() { git ls-files --unmerged | cut -f2 | sort -u ; }; mate `f`"
+  edit-unmerged = "!f() { git ls-files --unmerged | cut -f2 | sort -u ; }; subl `f`"
   add-unmerged  = "!f() { git ls-files --unmerged | cut -f2 | sort -u ; }; git add `f`"
 
 [core]
