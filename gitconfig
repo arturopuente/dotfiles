@@ -9,7 +9,7 @@
   browse = !hub browse
   w      = !hub browse
   compare = !hub compare
-  c = commit -am
+  c = commit -m
   ci = commit
   cm = commit -m
   amend = commit --amend  

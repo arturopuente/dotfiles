@@ -1,5 +1,5 @@
-alias l="ls -lAh"
-alias la="ls -A"
+alias la="ls -lAh"
+alias l="ls -A"
 alias ..="cd .."
 alias cda="cd ~/dev/apps"
 alias cdd="cd ~/Downloads"
@@ -49,6 +49,7 @@ alias rage="bundle exec rake"
 alias gemi="gem install --no-rdoc --no-ri"
 alias irb="irb --simple-prompt"
 alias ra="rails s"
+alias ru="unicorn -l 3030 -c config/unicorn.rb"
 alias repow="touch tmp/restart.txt"
 
 # Postgres
