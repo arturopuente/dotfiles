@@ -4,8 +4,11 @@ call pathogen#runtime_append_all_bundles()
 
 set nocompatible
 syntax on
+set nowrap
 
 let mapleader=","
+set statusline=%<%f\ %h%m%r%{fugitive#statusline()}%=%-14.(%l,%c%V%)\ %P
+set grepprg=ack
 
 set gfn=Monaco:h18
 set go-=T
@@ -40,3 +43,7 @@ set expandtab
 set tabstop=2
 set shiftwidth=2
 set softtabstop=2
+
+nnoremap <leader>n :NERDTreeToggle<cr>
+let NERDTreeMinimalUI=1
+let NERDTreeDirArrows=1

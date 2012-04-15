@@ -1,6 +1,6 @@
 [user]
 	name = Arturo Puente
-  email = arturopuentevc@gmail.com
+	email = arturopuentevc@gmail.com
 
 [github]
   user = arturopuente
@@ -32,7 +32,7 @@
   add-unmerged  = "!f() { git ls-files --unmerged | cut -f2 | sort -u ; }; git add `f`"
 
 [core]
-  excludesfile = ~/.gitignore
+	excludesfile = /Users/arturo/.gitignore_global
   pager = less
   logallrefupdates = true
   whitespace = space-before-tab, trailing-space
@@ -76,3 +76,9 @@
 
 [diff]
   tool = Kaleidoscope
+[difftool "sourcetree"]
+	cmd = opendiff \"$LOCAL\" \"$REMOTE\"
+	path = 
+[mergetool "sourcetree"]
+	cmd = /Applications/SourceTree.app/Contents/Resources/opendiff-w.sh \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
+	trustExitCode = true
