@@ -1,5 +1,6 @@
 # Local Bin
-set PATH "/usr/local/bin:/usr/local/sbin" $PATH
+set PATH "/usr/local/bin:/usr/local/sbin:" $PATH
+set PATH $HOME/bin $PATH
 
 # Rbenv bin and shims of the current ruby
 set PATH $HOME/.rbenv/bin $PATH

@@ -7,7 +7,7 @@ function .. -d ".."
 end
 
 alias l="ls -lah"
-alias cdp="cd ~/projects"
+alias cdp="cd ~/dev/projects"
 alias cdd="cd ~/Downloads"
 
 function fixscreen -d "Fixes my screen resolution"
@@ -118,6 +118,12 @@ end
 function gac -d "git: add and commit with a message"
   git add -A
   git commit -m $argv[1]
+end
+
+function gacp -d "git: add and commit with a message, then pushes it"
+  git add -A
+  git commit -m $argv[1]
+  git push
 end
 
 function gco -d "git: commit with a message"
