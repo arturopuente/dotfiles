@@ -13,7 +13,6 @@ set PATH "/usr/local/mysql/bin" $PATH
 set PATH "/opt/nginx/sbin" $PATH
 set PATH "/opt/local/bin" $PATH
 set PATH "/opt/local/sbin" $PATH
-set PATH $HOME/bin $PATH
 
 set fish_greeting ""
 set fish_color_cwd "bbbbbb"

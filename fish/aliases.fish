@@ -7,8 +7,14 @@ function .. -d ".."
 end
 
 alias l="ls -lah"
-alias cdp="cd ~/dev/projects"
+alias cdp="cd ~/projects"
 alias cdd="cd ~/Downloads"
+
+function fixscreen -d "Fixes my screen resolution"
+  xrandr --newmode "1360x706_60"   77.25  1360 1424 1560 1760  706 709 719 734 -hsync +vsync
+  xrandr --addmode VBOX0 1360x706_60
+  xrandr --output VBOX0 1360x706_60
+end
 
 function reload -d "reload aliases and env"
   . ~/dev/dotfiles/fish/aliases.fish
@@ -89,7 +95,6 @@ alias pryrails="pry -r ./config/environment"
 alias ra="rails server"
 alias rae="rails server -e production"
 alias rac="rails console"
-alias gl="git log --graph --pretty=format:'%Cgreen%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold red)<%an>%Creset' --abbrev-commit --date=relative"
 
 # Trash
 function trash -d "send a file to the trash"
@@ -102,10 +107,7 @@ alias gs="git status"
 alias gd="git diff"
 alias gc="git checkout"
 alias push="git push"
-alias pusho="git push origin master"
-alias pushb="git push origin"
-alias pullo="git pull origin master"
-alias pullb="git pull origin"
+alias pusho="git push origin"
 
 function gao -d "git: add, commit with a message and push to the default origin master"
   git add -A
@@ -116,12 +118,6 @@ end
 function gac -d "git: add and commit with a message"
   git add -A
   git commit -m $argv[1]
-end
-
-function gacp -d "git: add and commit with a message, then push it"
-  git add -A
-  git commit -m $argv[1]
-  git push origin master
 end
 
 function gco -d "git: commit with a message"
