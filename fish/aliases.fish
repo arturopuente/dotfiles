@@ -1,3 +1,7 @@
+alias wow="git status"
+alias such=git
+alias very=git
+
 function editor -d "the editor of choice. Edit on demand with ealias"
   subl $argv
 end
