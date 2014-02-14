@@ -1,3 +1,7 @@
+function git
+  /usr/local/bin/git $argv; 
+end
+
 alias wow="git status"
 alias such=git
 alias very=git
