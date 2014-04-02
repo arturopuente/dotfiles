@@ -18,12 +18,6 @@ alias l="ls -lah"
 alias cdp="cd ~/dev/projects"
 alias cdd="cd ~/Downloads"
 
-function fixscreen -d "Fixes my screen resolution"
-  xrandr --newmode "1360x706_60"   77.25  1360 1424 1560 1760  706 709 719 734 -hsync +vsync
-  xrandr --addmode VBOX0 1360x706_60
-  xrandr --output VBOX0 1360x706_60
-end
-
 function reload -d "reload aliases and env"
   . ~/dev/dotfiles/fish/aliases.fish
   . ~/dev/dotfiles/fish/env.fish
@@ -117,10 +111,8 @@ alias gc="git checkout"
 alias push="git push"
 alias pusho="git push origin"
 
-function gao -d "git: add, commit with a message and push to the default origin master"
-  git add -A
-  git commit -m $argv[1]
-  git push
+function pushb -d "git: pushes the current branch to the matching upstream"
+  git push $argb[1]
 end
 
 function gac -d "git: add and commit with a message"
