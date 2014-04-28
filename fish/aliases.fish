@@ -132,7 +132,7 @@ function gacb -d "git: add and commit with a message, then pushes it to a specif
   git push origin $argv[1]
 end
 
-function gap -d "git: adds, commits, pushes. accepts the branch as the first paramter"
+function gap -d "git: adds, commits, pushes. accepts the branch as the first parameter"
   git add -A
   if [ (count $argv) -gt 1 ]
     git commit -m $argv[2]
