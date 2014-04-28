@@ -126,6 +126,23 @@ function gacp -d "git: add and commit with a message, then pushes it"
   git push
 end
 
+function gacb -d "git: add and commit with a message, then pushes it to a specific branch"
+  git add -A
+  git commit -m $argv[2]
+  git push origin $argv[1]
+end
+
+function gap -d "git: adds, commits, pushes. accepts the branch as the first paramter"
+  git add -A
+  if [ (count $argv) -gt 1 ]
+    git commit -m $argv[2]
+    git push origin $argv[1]
+  else
+    git commit -m $argv[1]
+    git push
+  end
+end
+
 function gco -d "git: commit with a message"
   git commit -m $argv[1]
 end
