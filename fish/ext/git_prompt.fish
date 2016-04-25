@@ -26,13 +26,11 @@ function __git_prompt --description 'Write out the git prompt'
     return
   end
 
-  echo -n 'at '
-
   set -l index (git status --porcelain ^/dev/null|cut -c 1-2|sort -u)
 
   if test -z "$index"
     set_color $fish_color_git_clean
-    echo -n $branch'✓'
+    echo -n $branch'✓ '
     set_color normal
     return
   end
@@ -73,6 +71,8 @@ function __git_prompt --description 'Write out the git prompt'
       echo -n $$status_name
     end
   end
+
+  echo -n ' '
 
   set_color normal
 end

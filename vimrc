@@ -1,10 +1,10 @@
 call pathogen#infect()
 call pathogen#helptags()
-call pathogen#runtime_append_all_bundles()
 
 set nocompatible
 syntax on
 set nowrap
+set t_Co=256
 
 let mapleader=","
 set statusline=%<%f\ %h%m%r%{fugitive#statusline()}%=%-14.(%l,%c%V%)\ %P
