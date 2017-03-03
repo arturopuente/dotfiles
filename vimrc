@@ -1,6 +1,8 @@
 call pathogen#infect()
 call pathogen#helptags()
 
+set pastetoggle=<F10>
+
 set nocompatible
 syntax on
 set nowrap
