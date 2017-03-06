@@ -19,9 +19,5 @@ set PATH /Applications/Postgres.app/Contents/MacOS $PATH
 # Rehash rbenv to get the latest rubies installed
 rbenv rehash >/dev/null ^&1
 
-set PATH "/usr/local/mysql/bin" $PATH
-set PATH "/opt/local/bin" $PATH
-set PATH "/opt/local/sbin" $PATH
-
 set fish_greeting ""
 set fish_color_cwd "bbbbbb"

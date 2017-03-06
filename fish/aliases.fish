@@ -14,7 +14,8 @@ function pack
 end
 
 alias l="ls -lah"
-alias cdp="cd ~/dev/projects/me"
+alias cdpm="cd ~/dev/projects/me"
+alias cdp="cd ~/dev/projects/srburns"
 alias cdd="cd ~/Downloads"
 
 function reload -d "reload aliases and env"
