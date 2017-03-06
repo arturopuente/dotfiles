@@ -1,7 +1,3 @@
-alias wow="git status"
-alias such=git
-alias very=git
-
 alias vi=vim
 
 function editor -d "the editor of choice. Edit on demand with ealias"
