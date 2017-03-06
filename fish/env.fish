@@ -7,6 +7,11 @@ set EDITOR vim
 set PATH ~/.rbenv/bin $PATH
 set PATH ~/.rbenv/shims $PATH
 
+# nvm
+
+export NVM_DIR="$HOME/.nvm"
+. "/usr/local/opt/nvm/nvm.sh"
+
 # Postgres
 
 set PATH /Applications/Postgres.app/Contents/MacOS $PATH
