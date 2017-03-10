@@ -3,6 +3,9 @@ call pathogen#helptags()
 
 set pastetoggle=<F10>
 
+" Disable Ex mode
+noremap Q <nop>
+
 set nocompatible
 syntax on
 set nowrap
@@ -49,3 +52,4 @@ set softtabstop=2
 nnoremap <leader>n :NERDTreeToggle<cr>
 let NERDTreeMinimalUI=1
 let NERDTreeDirArrows=1
+
