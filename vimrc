@@ -3,6 +3,9 @@ call pathogen#helptags()
 
 set pastetoggle=<F10>
 
+" Disable Ex mode
+noremap Q <nop>
+
 set nocompatible
 syntax on
 filetype off
