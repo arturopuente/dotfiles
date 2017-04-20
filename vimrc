@@ -27,7 +27,7 @@ set autoindent
 set helplang=on
 set modelines=0
 
-set number
+set relativenumber
 
 set encoding=utf-8
 set scrolloff=3
@@ -61,4 +61,10 @@ noremap <Up> <NOP>
 noremap <Down> <NOP>
 noremap <Left> <NOP>
 noremap <Right> <NOP>
+
+set lazyredraw
+set showmatch
+set incsearch
+set hlsearch
+nnoremap <leader><space> :nohlsearch<CR>
 
