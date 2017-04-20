@@ -5,6 +5,10 @@ set pastetoggle=<F10>
 
 set nocompatible
 syntax on
+filetype off
+filetype plugin on 
+filetype indent on
+
 set nowrap
 set t_Co=256
 
@@ -16,8 +20,6 @@ set gfn=Monaco:h18
 set go-=T
 set go-=M
 set virtualedit=block
-filetype off
-filetype plugin indent on
 set autoindent
 set helplang=on
 set modelines=0
@@ -49,3 +51,6 @@ set softtabstop=2
 nnoremap <leader>n :NERDTreeToggle<cr>
 let NERDTreeMinimalUI=1
 let NERDTreeDirArrows=1
+
+set omnifunc=syntaxcomplete#Complete
+
