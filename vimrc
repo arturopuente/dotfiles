@@ -28,6 +28,8 @@ set helplang=on
 set modelines=0
 
 set relativenumber
+"autocmd InsertEnter * set number
+"autocmd InsertLeave * set relativenumber
 
 set encoding=utf-8
 set scrolloff=3
