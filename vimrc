@@ -1,6 +1,8 @@
 call pathogen#infect()
 call pathogen#helptags()
 
+set runtimepath^=~/.vim/bundle/ctrlp.vim
+
 set pastetoggle=<F10>
 
 " Disable Ex mode
@@ -52,10 +54,6 @@ set tabstop=2
 set shiftwidth=2
 set softtabstop=2
 
-nnoremap <leader>n :NERDTreeToggle<cr>
-let NERDTreeMinimalUI=1
-let NERDTreeDirArrows=1
-
 set omnifunc=syntaxcomplete#Complete
 
 noremap <Up> <NOP>
@@ -68,4 +66,5 @@ set showmatch
 set incsearch
 set hlsearch
 nnoremap <leader><space> :nohlsearch<CR>
+let g:netrw_liststyle = 3
 
