@@ -12,10 +12,6 @@ set PATH ~/.rbenv/shims $PATH
 export NVM_DIR="$HOME/.nvm"
 # . "/usr/local/opt/nvm/nvm.sh"
 
-# Postgres
-
-set PATH /Applications/Postgres.app/Contents/MacOS $PATH
-
 # Rehash rbenv to get the latest rubies installed
 rbenv rehash >/dev/null ^&1
 

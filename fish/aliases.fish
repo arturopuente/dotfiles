@@ -1,7 +1,7 @@
 alias vi=vim
 
 function editor -d "the editor of choice. Edit on demand with ealias"
-  code $argv
+  vim $argv
 end
 
 function .. -d ".."
@@ -15,7 +15,7 @@ end
 
 alias l="ls -lah"
 alias cdpm="cd ~/dev/projects/me"
-alias cdp="cd ~/dev/projects/srburns"
+alias cdp="cd ~/dev/projects/able"
 alias cdd="cd ~/Downloads"
 
 function reload -d "reload aliases and env"
