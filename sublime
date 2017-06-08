@@ -3,7 +3,7 @@
   "color_scheme": "Packages/ayu/ayu-dark.tmTheme",
   "ensure_newline_at_eof_on_save": true,
   "font_face": "Monaco",
-  "font_size": 21,
+  "font_size": 22,
   "highlight_line": true,
   "ignored_packages":
   [
