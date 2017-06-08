@@ -18,7 +18,6 @@ set nowrap
 set t_Co=256
 
 let mapleader=","
-set statusline=%<%f\ %h%m%r%{fugitive#statusline()}%=%-14.(%l,%c%V%)\ %P
 set grepprg=ack
 
 set gfn=Monaco:h18
@@ -67,4 +66,7 @@ set incsearch
 set hlsearch
 nnoremap <leader><space> :nohlsearch<CR>
 let g:netrw_liststyle = 3
+
+set term=xterm-256color
+set termencoding=utf-8
 
