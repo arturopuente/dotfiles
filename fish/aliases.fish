@@ -41,6 +41,7 @@ end
 # Git
 alias gs="git status"
 alias gd="git diff"
+alias gl="git lg"
 
 function prebase -d "adds a dummy commit and rebases it"
   git add .
