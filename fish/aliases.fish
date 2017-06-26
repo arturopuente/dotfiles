@@ -4,10 +4,6 @@ function editor -d "the editor of choice. Edit on demand with ealias"
   vim $argv
 end
 
-function .. -d ".."
-  cd ..
-end
-
 function pack
   set revision $argv[1]
   git diff $revision --name-only | tar -jcvf archive_$revision.tar.bz2 -T -
@@ -25,18 +21,6 @@ end
 
 alias epath="editor ~/dev/dotfiles/fish/env.fish"
 alias ealias="editor ~/dev/dotfiles/fish/aliases.fish"
-
-function pathremove -d "Remove all files with a given pattern"
-  find . -name $argv[1] -type f -delete
-end
-
-function extremove -d "Remove all files with a given extension"
-  find . -name "*.$argv[1]" -type f -delete
-end
-
-function wmount -d "Mounts a Windows shared folder"
-  sudo mount -t vboxsf $argv[1] /media/windows-shared/
-end
 
 function take
   mkdir $argv[1]
