@@ -120,3 +120,11 @@ map g# <Plug>(incsearch-nohl-g#)
 let g:EasyMotion_do_mapping = 0 " Disable default mappings
 nmap s <Plug>(easymotion-overwin-f2)
 
+autocmd BufWritePre * :%s/\s\+$//e
+
+nnoremap zn :tabnew<Space>
+nnoremap zh :tabfirst<CR>
+nnoremap zj :tabprev<CR>
+nnoremap zk :tabnext<CR>
+nnoremap zl :tablast<CR>
+
