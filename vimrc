@@ -2,7 +2,12 @@ call pathogen#infect()
 call pathogen#helptags()
 
 set runtimepath^=~/.vim/bundle/ctrlp.vim
+
 let g:ctrlp_custom_ignore='node_modules\|DS_Store\|git\|tmp\|public'
+let g:ctrlp_prompt_mappings = {
+    \ 'AcceptSelection("e")': ['<c-t>'],
+    \ 'AcceptSelection("t")': ['<cr>', '<2-LeftMouse>'],
+    \ }
 
 set pastetoggle=<F10>
 
