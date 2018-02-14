@@ -61,10 +61,10 @@ set softtabstop=2
 
 set omnifunc=syntaxcomplete#Complete
 
-noremap <Up> <NOP>
-noremap <Down> <NOP>
-noremap <Left> <NOP>
-noremap <Right> <NOP>
+noremap <Up> :echoe "Use k"<CR>
+noremap <Down> :echoe "Use j"<CR>
+noremap <Left> :echoe "Use h"<CR>
+noremap <Right> :echoe "Use l"<CR>
 
 set lazyredraw
 set showmatch
