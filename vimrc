@@ -131,9 +131,10 @@ nmap s <Plug>(easymotion-overwin-f2)
 
 autocmd BufWritePre * :%s/\s\+$//e
 
-nnoremap zn :tabnew<Space>
-nnoremap zh :tabfirst<CR>
-nnoremap zj :tabprev<CR>
-nnoremap zk :tabnext<CR>
-nnoremap zl :tablast<CR>
+nnoremap tn :tabnew<Space>
+nnoremap th :tabfirst<CR>
+nnoremap <C-[> :tabprev<CR>
+nnoremap <C-]> :tabnext<CR>
+nnoremap <C-w> :tabclose<CR>
+nnoremap tl :tablast<CR>
 
