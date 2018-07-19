@@ -1,4 +1,3 @@
-. ~/dev/dotfiles/fish/ext/z.fish
 . ~/dev/dotfiles/fish/ext/git_prompt.fish
 
 # Prompt
@@ -13,9 +12,6 @@ function prompt_pwd --description 'Print the current working directory, shortend
 end
 
 function fish_prompt
-  # add to z database
-  z --add "$PWD"
-
   # pwd
   set_color yellow --bold
   printf '%s' (prompt_pwd)

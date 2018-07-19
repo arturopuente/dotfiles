@@ -4,11 +4,6 @@ function editor -d "the editor of choice. Edit on demand with ealias"
   vim $argv
 end
 
-function pack
-  set revision $argv[1]
-  git diff $revision --name-only | tar -jcvf archive_$revision.tar.bz2 -T -
-end
-
 alias l="ls -lah"
 alias cdpm="cd ~/dev/projects/me"
 alias cdp="cd ~/dev/projects/able"
@@ -31,12 +26,6 @@ end
 alias b="bundle exec"
 alias bu="bundle update"
 alias rage="bundle exec rake"
-alias gemi="gem install --no-rdoc --no-ri"
-
-# Trash
-function trash -d "send a file to the trash"
-  mv $argv[1] ~/.Trash
-end
 
 # Git
 alias gs="git status"
