@@ -1,6 +1,5 @@
 # Local Bin
 set PATH "/usr/local/bin" $PATH
-set PATH $HOME/bin $PATH
 set EDITOR vim
 
 # chruby config
