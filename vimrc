@@ -98,11 +98,8 @@ endif
 "endif
 
 
-set background=dark " for the dark version
-" set background=light " for the light version
-colorscheme one
+color dracula
 
-let g:airline_theme='one'
 let g:airline_section_y=''
 let g:airline_section_x=''
 let g:airline_section_z='%3l/%L:%3v'
