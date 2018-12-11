@@ -24,6 +24,7 @@
 (tool-bar-mode -1) 
 (add-to-list 'default-frame-alist '(fullscreen . maximized))
 (global-linum-mode t)
+(setq column-number-mode t)
 (setq inhibit-startup-screen t)
 
 (setq ido-enable-flex-matching t)
