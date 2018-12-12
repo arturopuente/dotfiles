@@ -47,9 +47,18 @@
 (add-hook 'rjsx-mode-hook 'prettier-js-mode)
 (add-hook 'web-mode-hook 'prettier-js-mode)
 
-;; avoid cluttering up the directories with backup files
-(setq backup-directory-alist
-      `(("." . ,(concat user-emacs-directory "backups"))))
+;; disable backups
+(setq make-backup-files nil)
 
 ;; don't move back the cursor one space after exiting evil edit mode
 (setq evil-move-cursor-back nil)
+
+;; configure indentation
+(setq-default tab-width 2)
+(setq js-indent-level 2)
+
+;; yes/no to y/n
+(defalias 'yes-or-no-p 'y-or-n-p)
+
+;; default to UTF-8
+(prefer-coding-system 'utf-8)
