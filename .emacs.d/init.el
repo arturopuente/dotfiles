@@ -31,6 +31,8 @@
 (setq ido-everywhere t)
 (ido-mode 1)
 
+(windmove-default-keybindings)
+
 (require 'prettier-js)
 (add-hook 'js2-mode-hook 'prettier-js-mode)
 (add-hook 'rjsx-mode-hook 'prettier-js-mode)
