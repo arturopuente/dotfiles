@@ -50,3 +50,6 @@
 ;; avoid cluttering up the directories with backup files
 (setq backup-directory-alist
       `(("." . ,(concat user-emacs-directory "backups"))))
+
+;; don't move back the cursor one space after exiting evil edit mode
+(setq evil-move-cursor-back nil)
