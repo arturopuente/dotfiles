@@ -68,3 +68,7 @@
 (use-package minions
   :ensure t
   :config (minions-mode 1))
+
+(use-package flyspell
+  :hook ((text-mode . flyspell-mode)
+         (prog-mode . flyspell-prog-mode)))
