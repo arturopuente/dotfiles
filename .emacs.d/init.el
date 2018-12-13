@@ -7,6 +7,8 @@
   (add-to-list 'package-archives org-mode t)
 )
 
+(require 'use-package)
+
 ;; misc
 (setq custom-file "~/.emacs.d/custom.el")
 (load custom-file 'noerror)
@@ -62,3 +64,7 @@
 
 ;; default to UTF-8
 (prefer-coding-system 'utf-8)
+
+(use-package minions
+  :ensure t
+  :config (minions-mode 1))
