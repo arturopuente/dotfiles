@@ -98,10 +98,8 @@
 		(define-key minibuffer-local-map (kbd "C-r") 'counsel-minibuffer-history)
 	))
 
-(define-key ivy-minibuffer-map (kbd "C-h") (kbd "DEL"))
 (define-key ivy-minibuffer-map (kbd "C-j") 'ivy-previous-line)
 (define-key ivy-minibuffer-map (kbd "C-k") 'ivy-next-line)
-(define-key ivy-minibuffer-map (kbd "C-l") 'ivy-alt-done)
 (define-key ivy-minibuffer-map (kbd "<return>") 'ivy-alt-done)
 (define-key ivy-minibuffer-map (kbd "C-:") 'ivy-dired)
 (define-key ivy-minibuffer-map (kbd "C-c o") 'ivy-occur)
