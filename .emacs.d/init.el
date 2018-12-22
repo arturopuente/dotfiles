@@ -116,7 +116,8 @@
 (define-key ivy-minibuffer-map (kbd "C-c o") 'ivy-occur)
 
 (use-package magit
-	:ensure t)
+	:ensure t
+	:bind ("C-c s" . 'magit))
 
 (use-package evil-magit
 	:ensure t)
