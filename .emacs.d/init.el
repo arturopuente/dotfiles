@@ -77,6 +77,8 @@
   :hook ((text-mode . flyspell-mode)
          (prog-mode . flyspell-prog-mode)))
 
+(setq ispell-program-name "/usr/local/bin/ispell")
+
 (use-package helpful
 	:ensure t)
 
