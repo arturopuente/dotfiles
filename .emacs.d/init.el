@@ -6,33 +6,23 @@
 
 (require 'use-package)
 
+;; yes/no to y/n
+(defalias 'yes-or-no-p 'y-or-n-p)
+
+;; default to UTF-8
+(prefer-coding-system 'utf-8)
+
 ;; misc
 (setq custom-file "~/.emacs.d/custom.el")
-(setq default-directory "~/")
+(setq default-directory "~/dev/projects")
 (load custom-file 'noerror)
+
+;; prevent issues with dired in macOS
 (when (string= system-type "darwin")
   (setq dired-use-ls-dired nil))
-(add-hook 'before-save-hook 'delete-trailing-whitespace)
 
-;; default window options
-(tool-bar-mode 0)
-(menu-bar-mode 0)
-(add-to-list 'default-frame-alist '(fullscreen . maximized))
-(global-linum-mode t)
-(setq column-number-mode t)
-(setq inhibit-startup-screen t)
-(setq initial-scratch-message "")
-(setq visible-bell t)
-(blink-cursor-mode 0)
-
-;; visual options
-(load-theme 'rebecca t)
-(set-face-attribute 'default nil
-  :family "Monaco" :height 230 :weight 'normal)
-
-;; best vim emulation mode ever
-(require 'evil)
-(evil-mode 1)
+;; disable backups
+(setq make-backup-files nil)
 
 ;; sets fish as the command for ansi-term
 (setq explicit-shell-file-name "/usr/local/bin/fish")
@@ -40,36 +30,60 @@
 ;; ~/.emacs.d/init.el is a symlink
 (setq vc-follow-symlinks t)
 
-;; enable C-x C-f fuzzy finding
-(setq ido-enable-flex-matching t)
-(setq ido-everywhere t)
-(ido-mode 1)
+(add-hook 'before-save-hook 'delete-trailing-whitespace)
+
+;; start new windows maximized
+(add-to-list 'default-frame-alist '(fullscreen . maximized))
+
+;; remove unused menu and tool bar
+(tool-bar-mode 0)
+(menu-bar-mode 0)
+
+;; display current column in the status bar
+(setq column-number-mode t)
+
+;; remove cursor blink
+(blink-cursor-mode 0)
+
+;; enable line numbers
+(global-linum-mode t)
+
+;; remove startup stuff
+(setq inhibit-startup-screen t)
+(setq initial-scratch-message "")
+(setq visible-bell t)
 
 ;; move with shift + directional arrows
 (windmove-default-keybindings)
-
-;; hook prettier to run in the major web modes
-(require 'prettier-js)
-(add-hook 'js2-mode-hook 'prettier-js-mode)
-(add-hook 'rjsx-mode-hook 'prettier-js-mode)
-(add-hook 'web-mode-hook 'prettier-js-mode)
-
-;; disable backups
-(setq make-backup-files nil)
-
-;; don't move back the cursor one space after exiting evil edit mode
-(setq evil-move-cursor-back nil)
 
 ;; configure indentation
 (setq-default indent-tabs-mode nil)
 (setq-default tab-width 2)
 (setq js-indent-level 2)
 
-;; yes/no to y/n
-(defalias 'yes-or-no-p 'y-or-n-p)
+;; best font
+(set-face-attribute 'default nil
+  :family "Monaco" :height 230 :weight 'normal)
 
-;; default to UTF-8
-(prefer-coding-system 'utf-8)
+;; best theme
+(use-package rebecca-theme
+  :ensure t)
+(load-theme 'rebecca t)
+
+;; best vim emulation mode ever
+(use-package evil
+  :ensure t)
+(evil-mode 1)
+
+;; don't move back the cursor one space after exiting evil edit mode
+(setq evil-move-cursor-back nil)
+
+;; hook prettier to run in the major web modes
+(use-package prettier-js
+  :ensure t)
+(add-hook 'js2-mode-hook 'prettier-js-mode)
+(add-hook 'rjsx-mode-hook 'prettier-js-mode)
+(add-hook 'web-mode-hook 'prettier-js-mode)
 
 (use-package minions
   :ensure t
