@@ -1,12 +1,12 @@
 [user]
-	name = Arturo Puente
-	email = arturopuentevc@gmail.com
+  name = Arturo Puente
+  email = arturopuentevc@gmail.com
 
 [github]
   user = arturopuente
 
 [diff]
-	algorithm = patience
+  algorithm = patience
 
 [alias]
-	lg = log --color --graph --pretty=format:'%Cred%h%Creset%C(yellow)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset' --abbrev-commit
+  lg = log --color --graph --pretty=format:'%Cred%h%Creset%C(yellow)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset' --abbrev-commit
