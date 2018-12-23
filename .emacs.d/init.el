@@ -1,11 +1,8 @@
 (require 'cl-lib)
 (require 'package)
 
-(let ((melpa '("melpa" . "https://melpa.org/packages/"))
-      (org-mode '("org" . "https://orgmode.org/elpa/")))
-  (add-to-list 'package-archives melpa t)
-  (add-to-list 'package-archives org-mode t)
-)
+(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/"))
+(add-to-list 'package-archives '("org" . "https://orgmode.org/elpa/"))
 
 (require 'use-package)
 
@@ -18,11 +15,15 @@
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
 
 ;; default window options
-(tool-bar-mode -1)
+(tool-bar-mode 0)
+(menu-bar-mode 0)
 (add-to-list 'default-frame-alist '(fullscreen . maximized))
 (global-linum-mode t)
 (setq column-number-mode t)
 (setq inhibit-startup-screen t)
+(setq initial-scratch-message "")
+(setq visible-bell t)
+(blink-cursor-mode 0)
 
 ;; visual options
 (load-theme 'rebecca t)
@@ -60,6 +61,7 @@
 (setq evil-move-cursor-back nil)
 
 ;; configure indentation
+(setq-default indent-tabs-mode nil)
 (setq-default tab-width 2)
 (setq js-indent-level 2)
 
@@ -80,34 +82,34 @@
 (setq ispell-program-name "/usr/local/bin/ispell")
 
 (use-package helpful
-	:ensure t)
+  :ensure t)
 
 (use-package swiper
-	:ensure t
+  :ensure t
   :after (helpful)
-	:config
-	(progn
-		(ivy-mode 1)
-		(setq ivy-use-virtual-buffers t)
-		(setq enable-recursive-minibuffers t)
-		(global-set-key "\C-s" 'swiper)
-		(global-set-key (kbd "C-c C-r") 'ivy-resume)
-		(global-set-key (kbd "<f6>") 'ivy-resume)
-		(global-set-key (kbd "M-x") 'counsel-M-x)
-		(global-set-key (kbd "C-x C-f") 'counsel-find-file)
-		(global-set-key (kbd "C-h f") 'counsel-describe-function)
-		(global-set-key (kbd "C-h v") 'counsel-describe-variable)
-		(global-set-key (kbd "<f1> l") 'counsel-find-library)
-		(global-set-key (kbd "<f2> i") 'counsel-info-lookup-symbol)
-		(global-set-key (kbd "<f2> u") 'counsel-unicode-char)
-		(global-set-key (kbd "C-x p") 'counsel-git)
-		(global-set-key (kbd "C-c g") 'counsel-git)
-		(global-set-key (kbd "C-c f") 'counsel-git-grep)
-		(global-set-key (kbd "C-c k") 'counsel-ag)
-		(global-set-key (kbd "C-x l") 'counsel-locate)
-		(global-set-key (kbd "C-S-o") 'counsel-rhythmbox)
-		(define-key minibuffer-local-map (kbd "C-r") 'counsel-minibuffer-history)
-	))
+  :config
+  (progn
+    (ivy-mode 1)
+    (setq ivy-use-virtual-buffers t)
+    (setq enable-recursive-minibuffers t)
+    (global-set-key "\C-s" 'swiper)
+    (global-set-key (kbd "C-c C-r") 'ivy-resume)
+    (global-set-key (kbd "<f6>") 'ivy-resume)
+    (global-set-key (kbd "M-x") 'counsel-M-x)
+    (global-set-key (kbd "C-x C-f") 'counsel-find-file)
+    (global-set-key (kbd "C-h f") 'counsel-describe-function)
+    (global-set-key (kbd "C-h v") 'counsel-describe-variable)
+    (global-set-key (kbd "<f1> l") 'counsel-find-library)
+    (global-set-key (kbd "<f2> i") 'counsel-info-lookup-symbol)
+    (global-set-key (kbd "<f2> u") 'counsel-unicode-char)
+    (global-set-key (kbd "C-x p") 'counsel-git)
+    (global-set-key (kbd "C-c g") 'counsel-git)
+    (global-set-key (kbd "C-c f") 'counsel-git-grep)
+    (global-set-key (kbd "C-c k") 'counsel-ag)
+    (global-set-key (kbd "C-x l") 'counsel-locate)
+    (global-set-key (kbd "C-S-o") 'counsel-rhythmbox)
+    (define-key minibuffer-local-map (kbd "C-r") 'counsel-minibuffer-history)
+  ))
 
 (define-key ivy-minibuffer-map (kbd "C-k") 'ivy-previous-line)
 (define-key ivy-minibuffer-map (kbd "C-j") 'ivy-next-line)
@@ -116,8 +118,8 @@
 (define-key ivy-minibuffer-map (kbd "C-c o") 'ivy-occur)
 
 (use-package magit
-	:ensure t
-	:bind ("C-c s" . 'magit))
+  :ensure t
+  :bind ("C-c s" . 'magit))
 
 (use-package evil-magit
-	:ensure t)
+  :ensure t)
