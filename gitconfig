@@ -5,80 +5,8 @@
 [github]
   user = arturopuente
 
-[alias] 
-  browse = !hub browse
-  w      = !hub browse
-  compare = !hub compare
-  c = commit -m
-  ci = commit
-  cm = commit -m
-  amend = commit --amend  
-  a = add
-  aa = add -A
-  squash = rebase --interactive
-  co = checkout
-  st = status
-  ll = log --pretty=oneline --abbrev-commit --max-count=15
-  ps = push
-  pl = pull
-  plre = pull --rebase
-  pick = cherry-pick
-  br = branch
-  df = diff
-  spull = !git-svn fetch && git-svn rebase
-  spush = !git-svn dcommit
-  safe-merge = merge --no-commit --no-ff
-  edit-unmerged = "!f() { git ls-files --unmerged | cut -f2 | sort -u ; }; subl `f`"
-  add-unmerged  = "!f() { git ls-files --unmerged | cut -f2 | sort -u ; }; git add `f`"
-
-[core]
-	excludesfile = /Users/arturo/.gitignore_global
-  pager = less
-  logallrefupdates = true
-  whitespace = space-before-tab, trailing-space
-  editor = /usr/bin/vim
-
-[color]
-  ui = auto
-
-[color "diff"]
-  meta = blue bold
-  frag = magenta bold
-  old = red bold
-  new = green bold
-
-[color "branch"]
-  current = yellow reverse
-  local = yellow bold
-  remote = green bold
-  plain = red bold
-
-[color "status"]
-  added = yellow
-  changed = green bold
-  untracked = blue bold
-
-[branch]
-  autosetupmerge = true
-
 [diff]
-  renames = copies
-  mnemonicprefix = true
+	algorithm = patience
 
-[format]
-  pretty = %Cblue%h%Creset %Cgreen[%cr]%Creset (%an) %s
-
-[difftool "Kaleidoscope"]
-  cmd = "ksdiff-wrapper git \"$LOCAL\" \"$REMOTE\""
-
-[difftool]
-  prompt = false
-
-[diff]
-  tool = Kaleidoscope
-[difftool "sourcetree"]
-	cmd = opendiff \"$LOCAL\" \"$REMOTE\"
-	path = 
-[mergetool "sourcetree"]
-	cmd = /Applications/SourceTree.app/Contents/Resources/opendiff-w.sh \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
-	trustExitCode = true
+[alias]
+	lg = log --color --graph --pretty=format:'%Cred%h%Creset%C(yellow)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset' --abbrev-commit
