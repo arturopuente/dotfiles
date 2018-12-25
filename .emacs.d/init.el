@@ -51,7 +51,7 @@
 ;; remove startup stuff
 (setq inhibit-startup-screen t)
 (setq initial-scratch-message "")
-(setq visible-bell t)
+(setq ring-bell-function 'ignore)
 
 ;; move with shift + directional arrows
 (windmove-default-keybindings)
