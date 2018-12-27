@@ -45,9 +45,6 @@
 ;; remove cursor blink
 (blink-cursor-mode 0)
 
-;; enable line numbers
-(global-linum-mode t)
-
 ;; remove startup stuff
 (setq inhibit-startup-screen t)
 (setq initial-scratch-message "")
@@ -60,6 +57,14 @@
 (setq-default indent-tabs-mode nil)
 (setq-default tab-width 2)
 (setq js-indent-level 2)
+
+;; enable (relative) line numbers
+(global-linum-mode t)
+
+(use-package linum-relative
+  :ensure t)
+
+(linum-relative-mode t)
 
 ;; best font
 (set-face-attribute 'default nil
