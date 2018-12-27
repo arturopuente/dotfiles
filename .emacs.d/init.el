@@ -78,7 +78,20 @@
   :ensure t)
 (load-theme 'rebecca t)
 
-;; best vim emulation mode ever
+;; best package name
+(use-package evil-leader
+  :ensure t)
+
+(evil-leader/set-key
+  "f" 'swiper
+  "j" 'avy-goto-char
+  "g" 'magit-status
+  "p" 'counsel-git)
+
+(global-evil-leader-mode t)
+(evil-leader/set-leader "<SPC>")
+
+;; best vim emulation mode
 (use-package evil
   :ensure t)
 
