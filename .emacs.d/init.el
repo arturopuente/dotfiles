@@ -94,9 +94,16 @@
 ;; don't move back the cursor one space after exiting evil edit mode
 (setq evil-move-cursor-back nil)
 
+;; better support for jsx and js in general
+(use-package rjsx-mode
+  :ensure t)
+
+(add-to-list 'auto-mode-alist '(".*\\.js\\'" . rjsx-mode))
+
 ;; hook prettier to run in the major web modes
 (use-package prettier-js
   :ensure t)
+
 (add-hook 'js2-mode-hook 'prettier-js-mode)
 (add-hook 'rjsx-mode-hook 'prettier-js-mode)
 (add-hook 'web-mode-hook 'prettier-js-mode)
