@@ -53,9 +53,6 @@
 (setq initial-scratch-message "")
 (setq ring-bell-function 'ignore)
 
-;; move with shift + directional arrows
-(windmove-default-keybindings)
-
 ;; configure indentation
 (setq-default indent-tabs-mode nil)
 (setq-default tab-width 2)
