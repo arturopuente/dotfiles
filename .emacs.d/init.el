@@ -175,6 +175,9 @@
 (use-package evil-magit
   :ensure t)
 
+(use-package git-link
+  :ensure t)
+
 (use-package ruby-electric
   :ensure t
   :hook (ruby-mode . ruby-electric-mode))
