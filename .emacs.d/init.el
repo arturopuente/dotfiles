@@ -22,7 +22,10 @@
   (setq dired-use-ls-dired nil))
 
 ;; disable backups
-(setq make-backup-files nil)
+(setq make-backup-files nil
+      vc-make-backup-files nil
+      auto-save-default nil
+      create-lockfiles nil)
 
 ;; sets fish as the command for ansi-term
 (setq explicit-shell-file-name "/usr/local/bin/fish")
@@ -96,9 +99,9 @@
 
 ;; better support for jsx and js in general
 (use-package rjsx-mode
-  :ensure t)
-
-(add-to-list 'auto-mode-alist '(".*\\.js\\'" . rjsx-mode))
+  :ensure t
+  :mode "\\.jsx\\'"
+  :mode "\\.js\\'")
 
 ;; hook prettier to run in the major web modes
 (use-package prettier-js
@@ -107,6 +110,10 @@
 (add-hook 'js2-mode-hook 'prettier-js-mode)
 (add-hook 'rjsx-mode-hook 'prettier-js-mode)
 (add-hook 'web-mode-hook 'prettier-js-mode)
+
+(use-package json-mode
+  :ensure t
+  :config (setq json-reformat:indent-width 2))
 
 (use-package minions
   :ensure t
@@ -158,6 +165,13 @@
 (use-package ruby-electric
   :ensure t
   :hook (ruby-mode . ruby-electric-mode))
+
+(use-package web-mode
+  :ensure t
+  :mode "\\.erb\\'")
+
+(use-package yaml-mode
+  :ensure t)
 
 (use-package ace-window
   :ensure t)
