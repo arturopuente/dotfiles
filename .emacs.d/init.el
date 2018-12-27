@@ -78,7 +78,18 @@
 ;; best vim emulation mode ever
 (use-package evil
   :ensure t)
+
 (evil-mode 1)
+
+(use-package evil-surround
+  :ensure t
+  :config
+  (global-evil-surround-mode 1))
+
+(use-package expand-region
+  :ensure t)
+
+(global-set-key (kbd "C-=") 'er/expand-region)
 
 ;; don't move back the cursor one space after exiting evil edit mode
 (setq evil-move-cursor-back nil)
@@ -144,10 +155,3 @@
 (use-package ruby-electric
   :ensure t
   :hook (ruby-mode . ruby-electric-mode))
-
-;; spacemacs like completion
-
-(use-package which-key
-  :ensure t)
-
-(which-key-mode)
