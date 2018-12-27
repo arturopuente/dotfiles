@@ -130,9 +130,17 @@
 (define-key ivy-minibuffer-map (kbd "C-:") 'ivy-dired)
 (define-key ivy-minibuffer-map (kbd "C-c o") 'ivy-occur)
 
+;; magit config
+
 (use-package magit
   :ensure t
   :bind ("C-c s" . 'magit))
 
 (use-package evil-magit
   :ensure t)
+
+;; ruby config
+
+(use-package ruby-electric
+  :ensure t
+  :hook (ruby-mode . ruby-electric-mode))
