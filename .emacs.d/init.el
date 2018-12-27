@@ -166,6 +166,8 @@
   :ensure t
   :hook (ruby-mode . ruby-electric-mode))
 
+(add-hook 'rjsx-mode-hook 'electric-pair-mode)
+
 (use-package web-mode
   :ensure t
   :mode "\\.erb\\'")
