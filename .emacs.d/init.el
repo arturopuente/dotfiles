@@ -144,3 +144,10 @@
 (use-package ruby-electric
   :ensure t
   :hook (ruby-mode . ruby-electric-mode))
+
+;; spacemacs like completion
+
+(use-package which-key
+  :ensure t)
+
+(which-key-mode)
