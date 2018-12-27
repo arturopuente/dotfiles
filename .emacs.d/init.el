@@ -148,8 +148,6 @@
 (define-key ivy-minibuffer-map (kbd "C-:") 'ivy-dired)
 (define-key ivy-minibuffer-map (kbd "C-c o") 'ivy-occur)
 
-;; magit config
-
 (use-package magit
   :ensure t
   :bind ("C-c s" . 'magit))
@@ -157,16 +155,17 @@
 (use-package evil-magit
   :ensure t)
 
-;; ruby config
-
 (use-package ruby-electric
   :ensure t
   :hook (ruby-mode . ruby-electric-mode))
-
-;; ace window
 
 (use-package ace-window
   :ensure t)
 
 (global-set-key (kbd "M-o") 'ace-window)
 (setq aw-keys '(?a ?s ?d ?f ?g ?h))
+
+(use-package undo-tree
+  :ensure t
+  :config (global-undo-tree-mode 1)
+  :bind (("C-x u" . undo)))
