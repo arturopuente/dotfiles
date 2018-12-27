@@ -80,10 +80,10 @@
   :ensure t)
 
 (evil-leader/set-key
-  "f" 'swiper
+  "s" 'swiper
   "j" 'avy-goto-char
   "g" 'magit-status
-  "p" 'counsel-git)
+  "f" 'counsel-git)
 
 (global-evil-leader-mode t)
 (evil-leader/set-leader "<SPC>")
