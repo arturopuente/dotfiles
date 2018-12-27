@@ -83,7 +83,8 @@
   "s" 'swiper
   "j" 'avy-goto-char
   "g" 'magit-status
-  "f" 'counsel-git)
+  "f" 'counsel-git
+  "b" 'ivy-switch-buffer)
 
 (global-evil-leader-mode t)
 (evil-leader/set-leader "<SPC>")
