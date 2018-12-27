@@ -162,3 +162,11 @@
 (use-package ruby-electric
   :ensure t
   :hook (ruby-mode . ruby-electric-mode))
+
+;; ace window
+
+(use-package ace-window
+  :ensure t)
+
+(global-set-key (kbd "M-o") 'ace-window)
+(setq aw-keys '(?a ?s ?d ?f ?g ?h))
