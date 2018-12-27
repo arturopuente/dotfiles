@@ -185,3 +185,7 @@
   :ensure t
   :config (global-undo-tree-mode 1)
   :bind (("C-x u" . undo)))
+
+;; jump like vim easymotion
+(use-package avy
+  :ensure t)
