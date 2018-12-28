@@ -58,6 +58,14 @@
 (setq-default tab-width 2)
 (setq js-indent-level 2)
 
+(defun arturo/web-mode-hook ()
+  (setq web-mode-markup-indent-offset 2)
+  (setq web-mode-css-indent-offset 2)
+  (setq web-mode-code-indent-offset 2)
+)
+
+(add-hook 'web-mode-hook  'arturo/web-mode-hook)
+
 ;; enable (relative) line numbers
 (global-linum-mode t)
 
@@ -121,7 +129,6 @@
 
 (add-hook 'js2-mode-hook 'prettier-js-mode)
 (add-hook 'rjsx-mode-hook 'prettier-js-mode)
-(add-hook 'web-mode-hook 'prettier-js-mode)
 
 (use-package json-mode
   :ensure t
