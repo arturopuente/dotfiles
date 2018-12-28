@@ -211,3 +211,6 @@
 ;; jump like vim easymotion
 (use-package avy
   :ensure t)
+
+(use-package restclient
+  :ensure t)
