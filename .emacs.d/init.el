@@ -84,6 +84,7 @@
   "j" 'avy-goto-char
   "g" 'magit-status
   "f" 'counsel-git
+  "d" 'counsel-git-grep
   "b" 'ivy-switch-buffer)
 
 (global-evil-leader-mode t)
