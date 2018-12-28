@@ -5,7 +5,6 @@ set normal (set_color normal)
 set magenta (set_color magenta)
 set yellow (set_color yellow)
 set green (set_color green)
-set gray (set_color -o black)
 
 function prompt_pwd --description 'Print the current working directory, shortend to fit the prompt'
     echo $PWD | sed -e "s|^$HOME|~|"
@@ -19,4 +18,7 @@ function fish_prompt
   # git
   printf ' '
   __git_prompt
+  set_color normal
+  set_color yellow
+  printf '> '
 end
