@@ -214,3 +214,13 @@
 
 (use-package restclient
   :ensure t)
+
+(use-package evil-mc
+  :ensure t
+  :bind (
+    :map evil-mc-key-map
+         ("C-g" . evil-mc-undo-all-cursors)
+         ("C-j" . evil-mc-make-and-goto-next-match)
+         ("C-k" . evil-mc-make-and-goto-prev-match)
+    )
+  )
