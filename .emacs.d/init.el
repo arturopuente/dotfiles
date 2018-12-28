@@ -224,3 +224,8 @@
          ("C-k" . evil-mc-make-and-goto-prev-match)
     )
   )
+
+(use-package which-key
+  :ensure t)
+
+(which-key-mode)
