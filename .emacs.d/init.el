@@ -156,23 +156,16 @@
     (setq ivy-use-virtual-buffers t)
     (setq enable-recursive-minibuffers t)
     (global-set-key "\C-s" 'swiper)
-    (global-set-key (kbd "C-c C-r") 'ivy-resume)
     (global-set-key (kbd "M-x") 'counsel-M-x)
     (global-set-key (kbd "C-x C-f") 'counsel-find-file)
     (global-set-key (kbd "C-h f") 'counsel-describe-function)
     (global-set-key (kbd "C-h v") 'counsel-describe-variable)
-    (global-set-key (kbd "C-x p") 'counsel-git)
-    (global-set-key (kbd "C-c g") 'counsel-git)
-    (global-set-key (kbd "C-c f") 'counsel-git-grep)
     (global-set-key (kbd "C-x l") 'counsel-locate)
-    (define-key minibuffer-local-map (kbd "C-r") 'counsel-minibuffer-history)
   ))
 
 (define-key ivy-minibuffer-map (kbd "C-k") 'ivy-previous-line)
 (define-key ivy-minibuffer-map (kbd "C-j") 'ivy-next-line)
 (define-key ivy-minibuffer-map (kbd "<return>") 'ivy-alt-done)
-(define-key ivy-minibuffer-map (kbd "C-:") 'ivy-dired)
-(define-key ivy-minibuffer-map (kbd "C-c o") 'ivy-occur)
 
 (use-package magit
   :ensure t
