@@ -97,6 +97,7 @@
   "g" 'magit-status
   "f" 'counsel-git
   "d" 'counsel-git-grep
+  "n" 'dired
   "b" 'ivy-switch-buffer)
 
 (global-evil-leader-mode t)
