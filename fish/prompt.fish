@@ -2,9 +2,7 @@
 
 # Prompt
 set normal (set_color normal)
-set magenta (set_color magenta)
 set yellow (set_color yellow)
-set green (set_color green)
 
 function prompt_pwd --description 'Print the current working directory, shortend to fit the prompt'
   echo $PWD | sed -e "s|^$HOME|~|"
