@@ -226,3 +226,6 @@
   :ensure t)
 
 (which-key-mode)
+
+(use-package fish-mode
+  :ensure t)
