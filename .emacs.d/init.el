@@ -21,6 +21,9 @@
 (when (string= system-type "darwin")
   (setq dired-use-ls-dired nil))
 
+(setq delete-by-moving-to-trash t)
+(setq trash-directory "~/.Trash")
+
 ;; disable backups
 (setq make-backup-files nil
       vc-make-backup-files nil
