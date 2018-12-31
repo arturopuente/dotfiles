@@ -101,7 +101,12 @@
   "f" 'counsel-git
   "d" 'counsel-git-grep
   "n" 'dired
-  "b" 'ivy-switch-buffer)
+  "b" 'ivy-switch-buffer
+  "t" (let ((map (make-sparse-keymap)))
+        (define-key map (kbd "j") 'tide-jump-to-definition)
+        (define-key map (kbd "b") 'tide-jump-back)
+        map)
+  )
 
 (global-evil-leader-mode t)
 (evil-leader/set-leader "<SPC>")
