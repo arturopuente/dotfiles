@@ -191,6 +191,13 @@
 
 (add-hook 'rjsx-mode-hook 'electric-pair-mode)
 
+(use-package inf-ruby
+  :ensure t)
+
+(use-package robe
+  :ensure t
+  :hook (ruby-mode . robe-mode))
+
 (use-package web-mode
   :ensure t
   :mode "\\.erb\\'")
