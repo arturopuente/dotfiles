@@ -271,3 +271,7 @@
 
 (use-package alchemist
   :ensure t)
+
+(use-package org
+  :ensure t
+  :pin org)
