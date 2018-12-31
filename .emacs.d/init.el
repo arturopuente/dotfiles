@@ -204,6 +204,20 @@
   :ensure t
   :hook (ruby-mode . robe-mode))
 
+(use-package tide
+  :ensure t)
+
+(defun setup-tide-mode ()
+  (interactive)
+  (tide-setup)
+  (flycheck-mode +1)
+  (setq flycheck-check-syntax-automatically '(save mode-enabled))
+  (eldoc-mode +1)
+  (tide-hl-identifier-mode +1)
+  (company-mode +1))
+
+(add-hook 'rjsx-mode-hook #'setup-tide-mode)
+
 (use-package web-mode
   :ensure t
   :mode "\\.erb\\'")
