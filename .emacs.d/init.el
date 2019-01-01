@@ -9,6 +9,8 @@
 (use-package exec-path-from-shell
   :ensure t)
 
+;; when not called from inside a terminal, GUI emacs does not set the
+;; PATH or other environment variables correctly
 (when (memq window-system '(mac ns x))
   (exec-path-from-shell-initialize))
 
