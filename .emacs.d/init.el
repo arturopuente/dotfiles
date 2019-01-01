@@ -276,3 +276,12 @@
 (use-package org
   :ensure t
   :pin org)
+
+(use-package yasnippet
+  :ensure t)
+
+(use-package yasnippet-snippets
+  :ensure t)
+
+(yas-reload-all)
+(add-hook 'prog-mode-hook #'yas-minor-mode)
