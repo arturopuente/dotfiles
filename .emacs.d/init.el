@@ -195,7 +195,7 @@
   :ensure t
   :hook (ruby-mode . ruby-electric-mode))
 
-(add-hook 'rjsx-mode-hook 'electric-pair-mode)
+(electric-pair-mode t)
 
 (use-package company
   :ensure t
