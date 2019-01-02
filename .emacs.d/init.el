@@ -26,7 +26,7 @@
 (load custom-file 'noerror)
 
 ;; prevent issues with dired in macOS
-(when (string= system-type "darwin")
+(when (eq system-type 'darwin)
   (setq dired-use-ls-dired nil))
 
 (setq delete-by-moving-to-trash t)
