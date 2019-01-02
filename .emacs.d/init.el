@@ -288,8 +288,7 @@
 (use-package yasnippet
   :ensure t)
 
-(use-package yasnippet-snippets
-  :ensure t)
+(setq yas-snippet-dirs '("~/.emacs.d/snippets"))
 
 (yas-reload-all)
 (add-hook 'prog-mode-hook #'yas-minor-mode)
