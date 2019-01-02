@@ -218,6 +218,11 @@
   :ensure t
   :hook (ruby-mode . robe-mode))
 
+(use-package chruby
+  :ensure t)
+
+(chruby "ruby-2.6")
+
 (use-package tide
   :ensure t)
 
