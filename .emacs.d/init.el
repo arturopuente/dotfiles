@@ -85,6 +85,7 @@
   :ensure t)
 
 (linum-relative-mode t)
+(setq linum-relative-current-symbol "")
 
 ;; best font
 (set-face-attribute 'default nil
