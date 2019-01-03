@@ -56,9 +56,6 @@
 ;; display current column in the status bar
 (setq column-number-mode t)
 
-;; remove cursor blink
-(blink-cursor-mode 0)
-
 ;; remove startup stuff
 (setq inhibit-startup-screen t)
 (setq initial-scratch-message "")
@@ -97,6 +94,10 @@
 (use-package rebecca-theme
   :ensure t)
 (load-theme 'rebecca t)
+
+;; cursor options
+(blink-cursor-mode 0)
+(set-cursor-color "#FAD000")
 
 ;; best package name
 (use-package evil-leader
