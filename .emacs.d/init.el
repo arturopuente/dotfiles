@@ -126,6 +126,7 @@
   :ensure t)
 
 (evil-mode 1)
+(define-key evil-normal-state-map (kbd "C-f") 'evil-scroll-up)
 
 (use-package evil-surround
   :ensure t
