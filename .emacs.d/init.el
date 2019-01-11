@@ -29,6 +29,10 @@
 (when (eq system-type 'darwin)
   (setq dired-use-ls-dired nil))
 
+(add-hook 'dired-mode-hook
+  (lambda ()
+    (dired-hide-details-mode)))
+
 (setq delete-by-moving-to-trash t)
 (setq trash-directory "~/.Trash")
 
