@@ -50,6 +50,8 @@
 
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
 
+(delete-selection-mode t)
+
 ;; start new windows maximized
 (add-to-list 'default-frame-alist '(fullscreen . maximized))
 
