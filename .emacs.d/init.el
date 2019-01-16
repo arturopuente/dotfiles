@@ -20,6 +20,8 @@
 ;; default to UTF-8
 (prefer-coding-system 'utf-8)
 
+(setq-default word-wrap t)
+
 ;; misc
 (setq custom-file "~/.emacs.d/custom.el")
 (setq default-directory "~/dev/projects")
