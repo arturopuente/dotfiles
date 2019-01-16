@@ -114,7 +114,7 @@
 
 (evil-leader/set-key
   "s" 'swiper
-  "j" 'avy-goto-char
+  "j" 'avy-goto-char-2
   "g" 'magit-status
   "f" 'counsel-git
   "d" 'counsel-git-grep
