@@ -155,7 +155,6 @@
   :mode "\\.jsx\\'"
   :mode "\\.js\\'")
 
-;; hook prettier to run in the major web modes
 (use-package prettier-js
   :ensure t)
 
