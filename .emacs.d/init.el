@@ -307,3 +307,9 @@
 
 (yas-reload-all)
 (add-hook 'prog-mode-hook #'yas-minor-mode)
+
+;; prevent evil x/d/c from yanking before deleting
+;; by using the black hole register
+(defun my/evil-delete (orig-fn beg end &optional type _ &rest args)
+  (apply orig-fn beg end type ?_ args))
+(advice-add 'evil-delete :around 'my/evil-delete)
