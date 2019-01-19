@@ -327,3 +327,58 @@ This command does not push text to `kill-ring'."
   (my-delete-word (- arg)))
 
 (global-set-key (kbd "<M-backspace>") 'my-backward-delete-word)
+
+(evil-define-operator clip-evil-delete (beg end type register yank-handler)
+  "Delete text from BEG to END with TYPE.
+Save in REGISTER or in the kill-ring with YANK-HANDLER."
+  (interactive "<R><x><y>")
+  (unless register
+    (let ((text (filter-buffer-substring beg end)))
+      (unless (string-match-p "\n" text)
+        ;; set the small delete register
+        (evil-set-register ?- text))))
+  (cond
+   ((eq type 'block)
+    (evil-apply-on-block #'delete-region beg end nil))
+   ((and (eq type 'line)
+         (= end (point-max))
+         (or (= beg end)
+             (/= (char-before end) ?\n))
+         (/= beg (point-min))
+         (=  (char-before beg) ?\n))
+    (delete-region (1- beg) end))
+   (t
+    (delete-region beg end)))
+  ;; place cursor on beginning of line
+  (when (and (called-interactively-p 'any)
+             (eq type 'line))
+    (evil-first-non-blank)))
+
+(evil-define-operator clip-evil-change
+  (beg end type register yank-handler delete-func)
+  "Change text from BEG to END with TYPE.
+Save in REGISTER or the kill-ring with YANK-HANDLER.
+DELETE-FUNC is a function for deleting text, default `evil-delete'.
+If TYPE is `line', insertion starts on an empty line.
+If TYPE is `block', the inserted text in inserted at each line
+of the block."
+  (interactive "<R><x><y>")
+  (let ((delete-func (or delete-func #'clip-evil-delete))
+        (nlines (1+ (evil-count-lines beg end)))
+        (opoint (save-excursion
+                  (goto-char beg)
+                  (line-beginning-position))))
+    (unless (eq evil-want-fine-undo t)
+      (evil-start-undo-step))
+    (funcall delete-func beg end type register yank-handler)
+    (cond
+     ((eq type 'line)
+      (if ( = opoint (point))
+          (evil-open-above 1)
+        (evil-open-below 1)))
+     ((eq type 'block)
+      (evil-insert 1 nlines))
+     (t
+      (evil-insert 1)))))
+
+(define-key evil-normal-state-map "c" 'clip-evil-change)
