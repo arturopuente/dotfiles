@@ -9,6 +9,9 @@
 (use-package exec-path-from-shell
   :ensure t)
 
+;; Enable M-x without meta (needed for iPad/SSH access actually!)
+(global-set-key "\C-x\C-m" 'execute-extended-command)
+
 ;; when not called from inside a terminal, GUI emacs does not set the
 ;; PATH or other environment variables correctly
 (when (memq window-system '(mac ns x))
