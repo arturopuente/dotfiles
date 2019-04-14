@@ -119,13 +119,14 @@
   :family "Monaco" :height 230 :weight 'normal)
 
 ;; best theme
-(use-package rebecca-theme
-  :ensure t)
-(load-theme 'rebecca t)
+;; (use-package rebecca-theme
+;;   :ensure t)
+;; (load-theme 'rebecca t)
+(load-theme 'leuven t)
 
 ;; cursor options
 (blink-cursor-mode 0)
-(set-cursor-color "#FAD000")
+;; (set-cursor-color "#FAD000")
 
 ;; best package name
 (use-package evil-leader
