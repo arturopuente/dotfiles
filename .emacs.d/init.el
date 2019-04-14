@@ -226,6 +226,15 @@
 (define-key ivy-minibuffer-map (kbd "C-o") 'ivy-occur)
 (define-key ivy-minibuffer-map (kbd "<return>") 'ivy-alt-done)
 
+(use-package flx
+  :ensure t)
+
+(setq ivy-re-builders-alist
+      '((ivy-switch-buffer . ivy--regex-plus)
+        (t . ivy--regex-fuzzy)))
+
+(setq ivy-initial-inputs-alist nil)
+
 (use-package magit
   :ensure t
   :bind ("C-c s" . 'magit))
