@@ -134,7 +134,7 @@
   "j" 'avy-goto-char-2
   "g" 'magit-status
   "f" 'counsel-git
-  "d" 'counsel-git-grep
+  "r" 'counsel-rg
   "n" 'dired
   "b" 'ivy-switch-buffer
   "t" (let ((map (make-sparse-keymap)))
