@@ -424,3 +424,8 @@ of the block."
       (evil-insert 1)))))
 
 (define-key evil-normal-state-map "c" 'clip-evil-change)
+
+(with-eval-after-load 'org
+  (org-babel-do-load-languages 'org-babel-load-languages
+                               '((ruby . t)
+                                 (js . t))))
