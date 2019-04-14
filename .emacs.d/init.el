@@ -236,6 +236,9 @@
 
 (setq ivy-initial-inputs-alist nil)
 
+(setq counsel-rg-base-command
+      "rg -i -M 120 --no-heading --line-number --color never %s .")
+
 (use-package magit
   :ensure t
   :bind ("C-c s" . 'magit))
