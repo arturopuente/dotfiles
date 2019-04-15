@@ -140,6 +140,7 @@
   "r" 'counsel-rg
   "n" 'dired
   "b" 'ivy-switch-buffer
+  "o" 'neotree-toggle
   "t" (let ((map (make-sparse-keymap)))
         (define-key map (kbd "j") 'tide-jump-to-definition)
         (define-key map (kbd "b") 'tide-jump-back)
@@ -430,3 +431,18 @@ of the block."
   (org-babel-do-load-languages 'org-babel-load-languages
                                '((ruby . t)
                                  (js . t))))
+
+(use-package neotree
+  :ensure t)
+
+(global-set-key [f8] 'neotree-toggle)
+
+(evil-define-key 'normal neotree-mode-map (kbd "TAB") 'neotree-enter)
+(evil-define-key 'normal neotree-mode-map (kbd "RET") 'neotree-enter)
+(evil-define-key 'normal neotree-mode-map (kbd "p") 'neotree-quick-look)
+(evil-define-key 'normal neotree-mode-map (kbd "q") 'neotree-hide)
+(evil-define-key 'normal neotree-mode-map (kbd "g") 'neotree-refresh)
+(evil-define-key 'normal neotree-mode-map (kbd "j") 'neotree-next-line)
+(evil-define-key 'normal neotree-mode-map (kbd "k") 'neotree-previous-line)
+(evil-define-key 'normal neotree-mode-map (kbd "A") 'neotree-stretch-toggle)
+(evil-define-key 'normal neotree-mode-map (kbd "H") 'neotree-hidden-file-toggle)
