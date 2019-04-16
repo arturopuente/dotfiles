@@ -353,6 +353,7 @@
 (yas-reload-all)
 (add-hook 'prog-mode-hook #'yas-minor-mode)
 (add-hook 'org-mode-hook #'yas-minor-mode)
+(add-hook 'markdown-mode-hook #'yas-minor-mode)
 
 (defun my-delete-word (arg)
   "Delete characters forward until encountering the end of a word.
