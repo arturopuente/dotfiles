@@ -448,3 +448,5 @@ of the block."
 (evil-define-key 'normal neotree-mode-map (kbd "k") 'neotree-previous-line)
 (evil-define-key 'normal neotree-mode-map (kbd "A") 'neotree-stretch-toggle)
 (evil-define-key 'normal neotree-mode-map (kbd "H") 'neotree-hidden-file-toggle)
+
+(setq neo-theme 'ascii)
