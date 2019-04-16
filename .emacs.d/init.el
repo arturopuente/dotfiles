@@ -303,7 +303,7 @@
   :ensure t)
 
 (global-set-key (kbd "M-o") 'ace-window)
-(setq aw-keys '(?a ?s ?d ?f ?g ?h))
+(setq aw-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l))
 
 (use-package undo-tree
   :ensure t
