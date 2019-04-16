@@ -26,6 +26,7 @@
 (prefer-coding-system 'utf-8)
 
 (setq-default word-wrap t)
+(setq-default fill-column 80)
 
 ;; misc
 (setq custom-file "~/.emacs.d/custom.el")
