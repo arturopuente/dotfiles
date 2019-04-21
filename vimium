@@ -39,6 +39,6 @@ unmap K
 map v LinkHints.activateModeToOpenInNewTab
 map gu LinkHints.activateModeToOpenIncognito
 map gf LinkHints.activateModeToOpenInNewForegroundTab
-map car closeTabsOnRight
+map ctr closeTabsOnRight
 map w previousTab
 map o nextTab
