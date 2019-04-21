@@ -144,9 +144,9 @@
   "b" 'ivy-switch-buffer
   "o" 'neotree-toggle
   "*" 'delete-window
-  "!" 'delete-other-windows
-  "@" 'split-window-below
-  "#" 'split-window-right
+  "_" 'delete-other-windows
+  ":" 'split-window-below
+  "(" 'split-window-right
   "t" (let ((map (make-sparse-keymap)))
         (define-key map (kbd "j") 'tide-jump-to-definition)
         (define-key map (kbd "b") 'tide-jump-back)
