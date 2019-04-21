@@ -1,0 +1,44 @@
+unmap /
+unmap m
+unmap `
+unmap o
+unmap O
+unmap b
+unmap B
+unmap g0
+unmap g$
+unmap n
+unmap N
+unmap T
+unmap gT
+unmap gt
+unmap ^
+unmap ge
+unmap gE
+unmap <a-p>
+unmap <a-m>
+unmap <c-e>
+unmap <c-y>
+unmap r
+unmap p
+unmap P
+unmap gu
+unmap gU
+unmap v
+unmap V
+unmap <a-f>
+unmap gf
+unmap gF
+unmap h
+unmap l
+unmap zH
+unmap zL
+unmap J
+unmap K
+
+map v LinkHints.activateModeToOpenInNewTab
+map gu LinkHints.activateModeToOpenIncognito
+map gf LinkHints.activateModeToOpenInNewForegroundTab
+map car closeTabsOnRight
+map w previousTab
+map o nextTab
