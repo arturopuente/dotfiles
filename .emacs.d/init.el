@@ -455,3 +455,6 @@ of the block."
 (evil-define-key 'normal neotree-mode-map (kbd "H") 'neotree-hidden-file-toggle)
 
 (setq neo-theme 'ascii)
+
+(add-hook 'org-mode-hook
+          (lambda () (setq evil-auto-indent nil)))
