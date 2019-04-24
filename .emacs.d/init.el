@@ -349,6 +349,8 @@
   :ensure t
   :pin org)
 
+(setq initial-major-mode 'org-mode)
+
 (use-package yasnippet
   :ensure t)
 
