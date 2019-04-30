@@ -460,3 +460,6 @@ of the block."
 
 (add-hook 'org-mode-hook
           (lambda () (setq evil-auto-indent nil)))
+
+(use-package github-browse-file
+  :ensure t)
