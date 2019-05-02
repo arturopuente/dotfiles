@@ -467,3 +467,20 @@ of the block."
 (use-package js-comint
   :ensure t)
 
+(evil-set-initial-state 'vc-annotate-mode 'normal)
+(evil-define-key 'normal 'vc-annotate-mode-map
+  "q" 'quit-window
+  "a" 'vc-annotate-revision-previous-to-line
+  "d" 'vc-annotate-show-diff-revision-at-line
+  "=" 'vc-annotate-show-diff-revision-at-line
+  "D" 'vc-annotate-show-changeset-diff-revision-at-line
+  "F" 'vc-annotate-find-revision-at-line
+  "J" 'vc-annotate-revision-at-line
+  "L" 'vc-annotate-show-log-revision-at-line
+  "gj" 'vc-annotate-next-revision
+  "gk" 'vc-annotate-prev-revision
+  (kbd "C-j") 'vc-annotate-next-revision
+  (kbd "C-k") 'vc-annotate-prev-revision
+  "W" 'vc-annotate-working-revision
+  "A" 'vc-annotate-toggle-annotation-visibility
+  (kbd "RET") 'vc-annotate-goto-line)
