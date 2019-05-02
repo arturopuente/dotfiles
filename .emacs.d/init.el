@@ -463,3 +463,7 @@ of the block."
 
 (use-package github-browse-file
   :ensure t)
+
+(use-package js-comint
+  :ensure t)
+
