@@ -135,6 +135,7 @@
   :ensure t)
 
 (evil-leader/set-key
+  "a" 'vc-annotate
   "s" 'swiper
   "j" 'avy-goto-char-2
   "g" 'magit-status
@@ -468,19 +469,15 @@ of the block."
   :ensure t)
 
 (evil-set-initial-state 'vc-annotate-mode 'normal)
-(evil-define-key 'normal 'vc-annotate-mode-map
-  "q" 'quit-window
-  "a" 'vc-annotate-revision-previous-to-line
-  "d" 'vc-annotate-show-diff-revision-at-line
-  "=" 'vc-annotate-show-diff-revision-at-line
-  "D" 'vc-annotate-show-changeset-diff-revision-at-line
-  "F" 'vc-annotate-find-revision-at-line
-  "J" 'vc-annotate-revision-at-line
-  "L" 'vc-annotate-show-log-revision-at-line
-  "gj" 'vc-annotate-next-revision
-  "gk" 'vc-annotate-prev-revision
-  (kbd "C-j") 'vc-annotate-next-revision
-  (kbd "C-k") 'vc-annotate-prev-revision
-  "W" 'vc-annotate-working-revision
-  "A" 'vc-annotate-toggle-annotation-visibility
-  (kbd "RET") 'vc-annotate-goto-line)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "q") 'quit-window)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "a") 'vc-annotate-revision-previous-to-line)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "d") 'vc-annotate-show-diff-revision-at-line)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "=") 'vc-annotate-show-diff-revision-at-line)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "F") 'vc-annotate-find-revision-at-line)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "J") 'vc-annotate-revision-at-line)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "L") 'vc-annotate-show-log-revision-at-line)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "C-j") 'vc-annotate-next-revision)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "C-k") 'vc-annotate-prev-revision)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "W") 'vc-annotate-working-revision)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "A") 'vc-annotate-toggle-annotation-visibility)
+(evil-define-key 'normal vc-annotate-mode-map (kbd "RET") 'vc-annotate-goto-line)
