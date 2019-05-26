@@ -25,3 +25,5 @@ export CPPFLAGS="$CPPFLAGS -I/usr/local/opt/sqlite/include"
 # For pkg-config to find zlib and sqlite you may need to set:
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH /usr/local/opt/zlib/lib/pkgconfig"
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH /usr/local/opt/sqlite/lib/pkgconfig"
+export LC_ALL='en_US.UTF-8'
+export LANG='en_US.UTF-8'
