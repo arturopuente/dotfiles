@@ -135,20 +135,21 @@
   :ensure t)
 
 (evil-leader/set-key
-  "a" 'vc-annotate
+  "v" 'vc-annotate
   "s" 'swiper
-  "j" 'avy-goto-char-2
+  "c" 'avy-goto-char-2
   "g" 'magit-status
-  "f" 'counsel-git
-  "r" 'counsel-rg
+  "p" 'counsel-git
+  "f" 'counsel-rg
   "n" 'dired
   "b" 'ivy-switch-buffer
-  "o" 'neotree-toggle
+  "t" 'neotree-toggle
+  "w" 'ace-window
   "-" 'delete-window
   "1" 'delete-other-windows
   "2" 'split-window-below
   "3" 'split-window-right
-  "t" (let ((map (make-sparse-keymap)))
+  "j" (let ((map (make-sparse-keymap)))
         (define-key map (kbd "j") 'tide-jump-to-definition)
         (define-key map (kbd "b") 'tide-jump-back)
         map)
