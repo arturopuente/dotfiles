@@ -208,6 +208,8 @@
   :ensure t
   :config (minions-mode 1))
 
+(add-hook 'text-mode-hook 'turn-on-auto-fill)
+
 (use-package flyspell
   :hook ((text-mode . flyspell-mode)
          (prog-mode . flyspell-prog-mode)))
