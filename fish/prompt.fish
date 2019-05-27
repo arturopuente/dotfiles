@@ -2,7 +2,7 @@
 
 function fish_prompt
   # pwd
-  set_color yellow --bold
+  set_color magenta --bold
   printf '%s' (echo $PWD | sed -e "s|^$HOME|~|")
 
   # git
@@ -10,6 +10,6 @@ function fish_prompt
   __git_prompt
 
   set_color normal
-  set_color yellow
+  set_color magenta
   printf '> '
 end

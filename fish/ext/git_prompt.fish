@@ -1,5 +1,5 @@
 set -gx fish_color_git_clean green
-set -gx fish_color_git_staged yellow
+set -gx fish_color_git_staged blue
 set -gx fish_color_git_dirty red
 
 function __git_prompt --description 'Write out the git prompt'
