@@ -262,12 +262,6 @@
 (use-package git-link
   :ensure t)
 
-(use-package ruby-electric
-  :ensure t
-  :hook (ruby-mode . ruby-electric-mode))
-
-(electric-pair-mode t)
-
 (use-package company
   :ensure t
   :pin melpa)
