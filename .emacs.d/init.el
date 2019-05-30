@@ -288,6 +288,12 @@
 (use-package yaml-mode
   :ensure t)
 
+(use-package smartparens
+  :ensure t)
+
+(require 'smartparens-config)
+(add-hook 'prog-mode-hook #'smartparens-mode)
+
 (use-package ace-window
   :ensure t)
 
