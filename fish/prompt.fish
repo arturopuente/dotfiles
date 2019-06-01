@@ -11,5 +11,5 @@ function fish_prompt
 
   set_color normal
   set_color magenta
-  printf '> '
+  printf "\n\$ "
 end
