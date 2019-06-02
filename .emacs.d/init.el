@@ -245,6 +245,14 @@
 (use-package git-link
   :ensure t)
 
+(use-package diff-hl
+  :ensure t)
+
+(global-diff-hl-mode)
+(diff-hl-margin-mode)
+(diff-hl-flydiff-mode)
+(add-hook 'magit-post-refresh-hook 'diff-hl-magit-post-refresh)
+
 (use-package company
   :ensure t
   :pin melpa)
