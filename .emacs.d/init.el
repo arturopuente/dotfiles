@@ -432,6 +432,8 @@ of the block."
                                '((ruby . t)
                                  (js . t))))
 
+(setq org-confirm-babel-evaluate nil)
+
 (use-package neotree
   :ensure t)
 
@@ -453,9 +455,6 @@ of the block."
           (lambda () (setq evil-auto-indent nil)))
 
 (use-package github-browse-file
-  :ensure t)
-
-(use-package js-comint
   :ensure t)
 
 (evil-set-initial-state 'vc-annotate-mode 'normal)
