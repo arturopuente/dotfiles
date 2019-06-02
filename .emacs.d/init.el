@@ -61,6 +61,7 @@
 (delete-selection-mode t)
 
 ;; start new windows maximized
+(setq frame-resize-pixelwise t)
 (add-to-list 'default-frame-alist '(fullscreen . maximized))
 
 ;; remove unused menu and tool bar
