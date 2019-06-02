@@ -96,13 +96,8 @@
 (add-to-list 'auto-mode-alist '("\\.scss?\\'" . web-mode))
 
 ;; enable (relative) line numbers
-(global-linum-mode t)
-
-(use-package linum-relative
-  :ensure t)
-
-(linum-relative-mode t)
-(setq linum-relative-current-symbol "")
+(setq display-line-numbers-type 'relative)
+(global-display-line-numbers-mode)
 
 ;; best font
 (set-face-attribute 'default nil
