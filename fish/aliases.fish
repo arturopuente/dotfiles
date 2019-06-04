@@ -1,5 +1,5 @@
 alias l="ls -lah"
-alias cdpm="cd ~/dev/projects/me"
+alias cda="cd ~/dev/projects/arturo"
 alias cdp="cd ~/dev/projects/able"
 alias cdd="cd ~/Downloads"
 
@@ -8,4 +8,4 @@ alias b="bundle exec"
 
 # Git
 alias gs="git status"
-alias gl="git lg"
+alias gg="git lg"
