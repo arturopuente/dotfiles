@@ -80,7 +80,12 @@
 ;; configure indentation
 (setq-default indent-tabs-mode nil)
 (setq-default tab-width 2)
-(setq js-indent-level 2)
+(setq-default js-indent-level 2)
+(setq-default python-indent-offset 4)
+
+(setq-default electric-indent-inhibit t)
+(setq-default evil-shift-width 2)
+(global-set-key (kbd "TAB") 'tab-to-tab-stop)
 
 (use-package web-mode
   :ensure t
