@@ -86,6 +86,7 @@
 (setq-default electric-indent-inhibit t)
 (setq-default evil-shift-width 2)
 (global-set-key (kbd "TAB") 'tab-to-tab-stop)
+(global-set-key (kbd "<S-tab>") 'evil-shift-left)
 
 (use-package web-mode
   :ensure t
