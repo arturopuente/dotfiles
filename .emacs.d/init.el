@@ -129,7 +129,6 @@
   "c" 'avy-goto-char-2
   "g" 'magit-status
   "n" 'dired
-  "b" 'ivy-switch-buffer
   "j" (let ((map (make-sparse-keymap)))
         (define-key map (kbd "j") 'tide-jump-to-definition)
         (define-key map (kbd "b") 'tide-jump-back)
