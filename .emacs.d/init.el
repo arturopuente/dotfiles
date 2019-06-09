@@ -436,3 +436,13 @@ This command does not push text to `kill-ring'."
 ;; does the opposite of fill-region <M-q>
 (use-package unfill
   :ensure t)
+
+(use-package elscreen
+  :ensure t)
+
+(elscreen-start)
+
+(global-set-key (kbd "s-n") 'elscreen-clone)
+(global-set-key (kbd "s-w") 'elscreen-kill)
+(global-set-key (kbd "s-{") 'elscreen-previous)
+(global-set-key (kbd "s-}") 'elscreen-next)
