@@ -137,8 +137,8 @@
   "w" 'ace-window
   "-" 'delete-window
   "1" 'delete-other-windows
-  "2" 'split-window-below
-  "3" 'split-window-right
+  "2" 'split-window-right
+  "3" 'split-window-below
   "j" (let ((map (make-sparse-keymap)))
         (define-key map (kbd "j") 'tide-jump-to-definition)
         (define-key map (kbd "b") 'tide-jump-back)
@@ -446,3 +446,10 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "s-w") 'elscreen-kill)
 (global-set-key (kbd "s-{") 'elscreen-previous)
 (global-set-key (kbd "s-}") 'elscreen-next)
+
+(global-set-key (kbd "s-1") 'delete-other-windows)
+(global-set-key (kbd "s-2") 'split-window-right)
+(global-set-key (kbd "s-3") 'split-window-below)
+
+(global-set-key (kbd "s-t") 'neotree-toggle)
+(global-set-key (kbd "s-f") 'swiper)
