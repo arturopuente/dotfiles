@@ -431,6 +431,8 @@ This command does not push text to `kill-ring'."
 (use-package elscreen
   :ensure t)
 
+(setq-default elscreen-tab-display-kill-screen nil)
+(setq-default elscreen-tab-display-control nil)
 (elscreen-start)
 
 (global-set-key (kbd "s-n") 'elscreen-clone)
