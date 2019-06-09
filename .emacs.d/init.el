@@ -433,5 +433,6 @@ This command does not push text to `kill-ring'."
 (evil-define-key 'normal vc-annotate-mode-map (kbd "A") 'vc-annotate-toggle-annotation-visibility)
 (evil-define-key 'normal vc-annotate-mode-map (kbd "RET") 'vc-annotate-goto-line)
 
+;; does the opposite of fill-region <M-q>
 (use-package unfill
   :ensure t)
