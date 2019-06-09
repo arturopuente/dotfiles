@@ -126,19 +126,10 @@
 
 (evil-leader/set-key
   "v" 'vc-annotate
-  "s" 'swiper
   "c" 'avy-goto-char-2
   "g" 'magit-status
-  "p" 'counsel-git
-  "f" 'counsel-rg
   "n" 'dired
   "b" 'ivy-switch-buffer
-  "t" 'neotree-toggle
-  "w" 'ace-window
-  "-" 'delete-window
-  "1" 'delete-other-windows
-  "2" 'split-window-right
-  "3" 'split-window-below
   "j" (let ((map (make-sparse-keymap)))
         (define-key map (kbd "j") 'tide-jump-to-definition)
         (define-key map (kbd "b") 'tide-jump-back)
@@ -450,6 +441,12 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "s-1") 'delete-other-windows)
 (global-set-key (kbd "s-2") 'split-window-right)
 (global-set-key (kbd "s-3") 'split-window-below)
+(global-set-key (kbd "s-0") 'delete-window)
 
-(global-set-key (kbd "s-t") 'neotree-toggle)
+(global-set-key (kbd "s-b") 'neotree-toggle)
 (global-set-key (kbd "s-f") 'swiper)
+(global-set-key (kbd "s-F") 'counsel-rg)
+(global-set-key (kbd "s-t") 'ivy-switch-buffer)
+(global-set-key (kbd "s-p") 'counsel-git)
+
+(global-set-key (kbd "<C-tab>") 'ace-window)
