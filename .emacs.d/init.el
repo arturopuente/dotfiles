@@ -444,6 +444,8 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "s-3") 'split-window-below)
 (global-set-key (kbd "s-0") 'delete-window)
 
+(global-set-key (kbd "s-g") 'minibuffer-keyboard-quit)
+
 (global-set-key (kbd "s-b") 'neotree-toggle)
 (global-set-key (kbd "s-f") 'swiper)
 (global-set-key (kbd "s-F") 'counsel-rg)
