@@ -215,8 +215,8 @@
     (global-set-key (kbd "C-x l") 'counsel-locate)
   ))
 
-(define-key ivy-minibuffer-map (kbd "C-k") 'ivy-previous-line)
-(define-key ivy-minibuffer-map (kbd "C-j") 'ivy-next-line)
+(define-key ivy-minibuffer-map (kbd "s-k") 'ivy-previous-line)
+(define-key ivy-minibuffer-map (kbd "s-j") 'ivy-next-line)
 (define-key ivy-minibuffer-map (kbd "C-o") 'ivy-occur)
 (define-key ivy-minibuffer-map (kbd "<return>") 'ivy-alt-done)
 
