@@ -236,6 +236,10 @@
 (use-package magit
   :ensure t)
 
+(use-package forge
+  :ensure t
+  :after magit)
+
 (use-package evil-magit
   :ensure t)
 
