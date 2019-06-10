@@ -450,10 +450,10 @@ This command does not push text to `kill-ring'."
 
 (global-set-key (kbd "s-g") 'minibuffer-keyboard-quit)
 
-(global-set-key (kbd "s-b") 'neotree-toggle)
+(global-set-key (kbd "s-t") 'neotree-toggle)
 (global-set-key (kbd "s-f") 'swiper)
 (global-set-key (kbd "s-F") 'counsel-rg)
-(global-set-key (kbd "s-t") 'ivy-switch-buffer)
+(global-set-key (kbd "s-b") 'ivy-switch-buffer)
 (global-set-key (kbd "s-p") 'counsel-git)
 
 (global-set-key (kbd "<C-tab>") 'ace-window)
