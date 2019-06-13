@@ -456,7 +456,5 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "s-b") 'ivy-switch-buffer)
 (global-set-key (kbd "s-p") 'counsel-git)
 
-(global-set-key (kbd "<C-tab>") 'ace-window)
-
 (global-set-key (kbd "s-]") 'evil-shift-right-line)
 (global-set-key (kbd "s-[") 'evil-shift-left-line)
