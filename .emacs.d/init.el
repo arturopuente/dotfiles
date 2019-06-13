@@ -169,6 +169,8 @@
 
 (add-hook 'js2-mode-hook 'prettier-js-mode)
 (add-hook 'rjsx-mode-hook 'prettier-js-mode)
+(add-hook 'css-mode-hook '(lambda ()
+                          (add-hook 'after-save-hook 'evil-indent)))
 
 (use-package json-mode
   :ensure t
