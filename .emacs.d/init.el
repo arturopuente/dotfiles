@@ -459,7 +459,16 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "s-f") 'swiper)
 (global-set-key (kbd "s-F") 'deadgrep)
 (global-set-key (kbd "s-b") 'ivy-switch-buffer)
-(global-set-key (kbd "s-p") 'counsel-git)
 
 (global-set-key (kbd "s-]") 'evil-shift-right-line)
 (global-set-key (kbd "s-[") 'evil-shift-left-line)
+
+(use-package projectile
+  :ensure t
+  :config
+  (define-key projectile-mode-map (kbd "s-P") 'projectile-command-map)
+  (projectile-mode +1))
+
+(setq projectile-completion-system 'ivy)
+
+(global-set-key (kbd "s-p") 'projectile-find-file)
