@@ -451,7 +451,7 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "s-1") 'delete-other-windows)
 (global-set-key (kbd "s-2") 'split-window-right)
 (global-set-key (kbd "s-3") 'split-window-below)
-(global-set-key (kbd "s-0") 'delete-window)
+(global-set-key (kbd "s--") 'delete-window)
 
 (global-set-key (kbd "s-g") 'minibuffer-keyboard-quit)
 
