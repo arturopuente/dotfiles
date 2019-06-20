@@ -472,3 +472,6 @@ This command does not push text to `kill-ring'."
 (setq projectile-completion-system 'ivy)
 
 (global-set-key (kbd "s-p") 'projectile-find-file)
+
+(use-package rails-log-mode
+  :ensure t)
