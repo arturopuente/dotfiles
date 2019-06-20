@@ -433,6 +433,9 @@ This command does not push text to `kill-ring'."
 (use-package unfill
   :ensure t)
 
+(use-package deadgrep
+  :ensure t)
+
 (use-package elscreen
   :ensure t)
 
@@ -454,7 +457,7 @@ This command does not push text to `kill-ring'."
 
 (global-set-key (kbd "s-t") 'neotree-toggle)
 (global-set-key (kbd "s-f") 'swiper)
-(global-set-key (kbd "s-F") 'counsel-rg)
+(global-set-key (kbd "s-F") 'deadgrep)
 (global-set-key (kbd "s-b") 'ivy-switch-buffer)
 (global-set-key (kbd "s-p") 'counsel-git)
 
