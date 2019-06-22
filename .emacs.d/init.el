@@ -68,7 +68,13 @@ This command does not push text to `kill-ring'."
 (setq initial-scratch-message "")
 (setq ring-bell-function 'ignore)
 
-(prefer-coding-system 'utf-8)
+;; UTF-8 please
+(setq locale-coding-system 'utf-8) ; pretty
+(set-terminal-coding-system 'utf-8) ; pretty
+(set-keyboard-coding-system 'utf-8) ; pretty
+(set-selection-coding-system 'utf-8) ; please
+(prefer-coding-system 'utf-8) ; with sugar on top
+
 (setq-default word-wrap t)
 (setq-default fill-column 80)
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
