@@ -57,6 +57,8 @@ This command does not push text to `kill-ring'."
   :ensure t)
 
 (setq default-directory "~/dev/projects")
+(setq custom-file "~/.emacs.d/custom.el")
+(load custom-file 'noerror)
 
 ;; ~/.emacs.d/init.el is a symlink
 (setq vc-follow-symlinks t)

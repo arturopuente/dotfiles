@@ -74,6 +74,7 @@ This command does not push text to `kill-ring'."
 
 #+BEGIN_SRC emacs-lisp :tangle yes
 (setq default-directory "~/dev/projects")
+(setq custom-file "~/.emacs.d/custom.el")
 (load custom-file 'noerror)
 
 ;; ~/.emacs.d/init.el is a symlink
