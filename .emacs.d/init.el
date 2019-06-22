@@ -29,7 +29,7 @@
 ;; yes/no to y/n
 (defalias 'yes-or-no-p 'y-or-n-p)
 
-;; enables M-delete to work as intended
+;; delete the region when typing
 (delete-selection-mode t)
 
 (defun my-delete-word (arg)
@@ -50,6 +50,7 @@ This command does not push text to `kill-ring'."
   (interactive "p")
   (my-delete-word (- arg)))
 
+;; enables M-delete to work as intended
 (global-set-key (kbd "<M-backspace>") 'my-backward-delete-word)
 
 ;; avoids cluttering system clipboard with evil-{yank/change/delete}
