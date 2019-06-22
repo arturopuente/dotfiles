@@ -87,6 +87,8 @@ This command does not push text to `kill-ring'."
 ;; Just one space is needed.
 (setq sentence-end-double-space nil)
 
+(show-paren-mode t)
+
 ;; display a simplified view by default
 (add-hook 'dired-mode-hook
   (lambda ()
