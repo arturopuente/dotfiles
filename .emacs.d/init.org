@@ -1,3 +1,8 @@
+* Literate emacs config
+
+** Package and archive configuration
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (require 'package)
 
 (add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/"))
@@ -6,7 +11,11 @@
 (package-initialize)
 
 (require 'use-package)
+#+END_SRC
 
+** Playing nice with macOS
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package exec-path-from-shell
   :ensure t)
 
@@ -18,7 +27,11 @@
 ;; prevent issues with dired in macOS
 (when (eq system-type 'darwin)
   (setq dired-use-ls-dired nil))
+#+END_SRC
 
+** QOL options
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 ;; yes/no to y/n
 (defalias 'yes-or-no-p 'y-or-n-p)
 
@@ -55,7 +68,11 @@ This command does not push text to `kill-ring'."
 ;; does the opposite of fill-region <M-q>
 (use-package unfill
   :ensure t)
+#+END_SRC
 
+** Startup settings
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (setq default-directory "~/dev/projects")
 (load custom-file 'noerror)
 
@@ -66,7 +83,11 @@ This command does not push text to `kill-ring'."
 (setq inhibit-startup-screen t)
 (setq initial-scratch-message "")
 (setq ring-bell-function 'ignore)
+#+END_SRC
 
+** General file settings
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (prefer-coding-system 'utf-8)
 (setq-default word-wrap t)
 (setq-default fill-column 80)
@@ -75,18 +96,30 @@ This command does not push text to `kill-ring'."
 
 (setq delete-by-moving-to-trash t)
 (setq trash-directory "~/.Trash")
+#+END_SRC
 
+** Dired settings
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 ;; display a simplified view by default
 (add-hook 'dired-mode-hook
   (lambda ()
     (dired-hide-details-mode)))
+#+END_SRC
 
+** Disabling backups
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 ;; disable backups
 (setq make-backup-files nil
       vc-make-backup-files nil
       auto-save-default nil
       create-lockfiles nil)
+#+END_SRC
 
+** GUI options
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 ;; start new windows maximized
 (setq frame-resize-pixelwise t)
 (add-to-list 'default-frame-alist '(fullscreen . maximized))
@@ -114,7 +147,11 @@ This command does not push text to `kill-ring'."
 (use-package minions
   :ensure t
   :config (minions-mode 1))
+#+END_SRC
 
+** Indentation
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 ;; configure indentation
 (setq-default indent-tabs-mode nil)
 (setq-default tab-width 2)
@@ -126,7 +163,11 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "<S-tab>") 'evil-shift-left)
 (global-set-key (kbd "s-]") 'evil-shift-right-line)
 (global-set-key (kbd "s-[") 'evil-shift-left-line)
+#+END_SRC
 
+** Evil
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 ;; best vim emulation mode
 (use-package evil
   :ensure t)
@@ -136,7 +177,11 @@ This command does not push text to `kill-ring'."
 
 ;; don't move back the cursor one space after exiting evil edit mode
 (setq evil-move-cursor-back nil)
+#+END_SRC
 
+** Evil Leader
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 ;; best package name
 (use-package evil-leader
   :ensure t)
@@ -154,12 +199,20 @@ This command does not push text to `kill-ring'."
 
 (global-evil-leader-mode t)
 (evil-leader/set-leader "<SPC>")
+#+END_SRC
 
+** Evil plugins
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package evil-surround
   :ensure t
   :config
   (global-evil-surround-mode 1))
+#+END_SRC
 
+** Code navigation
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package expand-region
   :ensure t)
 
@@ -215,7 +268,11 @@ This command does not push text to `kill-ring'."
 ;; jump like vim easymotion
 (use-package avy
   :ensure t)
+#+END_SRC
 
+** Web
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package web-mode
   :ensure t
   :init (setq web-mode-markup-indent-offset 2)
@@ -229,7 +286,11 @@ This command does not push text to `kill-ring'."
 (add-to-list 'auto-mode-alist '("\\.erb\\'" . web-mode))
 (add-to-list 'auto-mode-alist '("\\.css?\\'" . web-mode))
 (add-to-list 'auto-mode-alist '("\\.scss?\\'" . web-mode))
+#+END_SRC
 
+** Ruby
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package inf-ruby
   :ensure t)
 
@@ -247,7 +308,11 @@ This command does not push text to `kill-ring'."
 
 (use-package rails-log-mode
   :ensure t)
+#+END_SRC
 
+** JavaScript
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 ;; better support for jsx
 (use-package rjsx-mode
   :ensure t
@@ -277,23 +342,39 @@ This command does not push text to `kill-ring'."
   (company-mode +1))
 
 (add-hook 'rjsx-mode-hook #'setup-tide-mode)
+#+END_SRC
 
+** CSS
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (add-hook 'css-mode-hook '(lambda ()
                           (add-hook 'after-save-hook 'web-mode-buffer-indent)))
+#+END_SRC
 
+** Elixir
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package elixir-mode
   :ensure t)
 
 (use-package alchemist
   :ensure t)
+#+END_SRC
 
+** Markdown
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package markdown-mode
   :ensure t
   :mode (("README\\.md\\'" . gfm-mode)
         ("\\.md\\'" . markdown-mode)
         ("\\.markdown\\'" . markdown-mode))
   :init (setq markdown-command "multimarkdown"))
+#+END_SRC
 
+** Org
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package org
   :ensure t
   :pin org)
@@ -309,7 +390,11 @@ This command does not push text to `kill-ring'."
 
 (add-hook 'org-mode-hook
           (lambda () (setq evil-auto-indent nil)))
+#+END_SRC
 
+** Git
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package magit
   :ensure t)
 
@@ -347,21 +432,37 @@ This command does not push text to `kill-ring'."
 (evil-define-key 'normal vc-annotate-mode-map (kbd "W") 'vc-annotate-working-revision)
 (evil-define-key 'normal vc-annotate-mode-map (kbd "A") 'vc-annotate-toggle-annotation-visibility)
 (evil-define-key 'normal vc-annotate-mode-map (kbd "RET") 'vc-annotate-goto-line)
+#+END_SRC
 
+** Rest Client
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package restclient
   :ensure t)
+#+END_SRC
 
+** Text Files
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package edit-indirect
   :ensure t)
 
 (add-hook 'text-mode-hook 'turn-on-auto-fill)
+#+END_SRC
 
+** Prog files
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package smartparens
   :ensure t)
 
 (require 'smartparens-config)
 (add-hook 'prog-mode-hook #'smartparens-mode)
+#+END_SRC
 
+** File search
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package deadgrep
   :ensure t)
 
@@ -376,7 +477,11 @@ This command does not push text to `kill-ring'."
 (setq projectile-completion-system 'ivy)
 
 (global-set-key (kbd "s-p") 'projectile-find-file)
+#+END_SRC
 
+** Enhanced Emacs features
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package flyspell
   :hook ((text-mode . flyspell-mode)
         (prog-mode . flyspell-prog-mode)))
@@ -394,7 +499,11 @@ This command does not push text to `kill-ring'."
   :ensure t)
 
 (which-key-mode)
+#+END_SRC
 
+** Snippets
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package yasnippet
   :ensure t)
 
@@ -404,7 +513,11 @@ This command does not push text to `kill-ring'."
 (add-hook 'prog-mode-hook #'yas-minor-mode)
 (add-hook 'org-mode-hook #'yas-minor-mode)
 (add-hook 'markdown-mode-hook #'yas-minor-mode)
+#+END_SRC
 
+** Neotree
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package neotree
   :ensure t)
 
@@ -421,7 +534,11 @@ This command does not push text to `kill-ring'."
 (evil-define-key 'normal neotree-mode-map (kbd "k") 'neotree-previous-line)
 (evil-define-key 'normal neotree-mode-map (kbd "A") 'neotree-stretch-toggle)
 (evil-define-key 'normal neotree-mode-map (kbd "H") 'neotree-hidden-file-toggle)
+#+END_SRC
 
+** Elscreen
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package elscreen
   :ensure t)
 
@@ -433,7 +550,11 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "s-w") 'elscreen-kill)
 (global-set-key (kbd "s-{") 'elscreen-previous)
 (global-set-key (kbd "s-}") 'elscreen-next)
+#+END_SRC
 
+** Window management
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (global-set-key (kbd "s-1") 'delete-other-windows)
 (global-set-key (kbd "s-2") 'split-window-right)
 (global-set-key (kbd "s-3") 'split-window-below)
@@ -441,3 +562,10 @@ This command does not push text to `kill-ring'."
 
 (global-set-key (kbd "s-b") 'ivy-switch-buffer)
 (global-set-key (kbd "s-g") 'minibuffer-keyboard-quit)
+#+END_SRC
+
+** Compilation
+
+;; Local Variables:
+;; eval: (add-hook 'after-save-hook (lambda ()(org-babel-tangle)) nil t)
+;; End:
