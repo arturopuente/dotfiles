@@ -439,22 +439,14 @@ This command does not push text to `kill-ring'."
 (evil-define-key 'normal neotree-mode-map (kbd "A") 'neotree-stretch-toggle)
 (evil-define-key 'normal neotree-mode-map (kbd "H") 'neotree-hidden-file-toggle)
 
-(use-package elscreen
-  :ensure t)
+(bind-key "s-1" 'delete-other-windows)
+(bind-key "s-2" 'split-window-right)
+(bind-key "s-3" 'split-window-below)
+(bind-key "s--" 'delete-window)
 
-(setq-default elscreen-tab-display-kill-screen nil)
-(setq-default elscreen-tab-display-control nil)
-(elscreen-start)
+(bind-key "s-b" 'ivy-switch-buffer)
+(bind-key "s-g" 'minibuffer-keyboard-quit)
 
-(global-set-key (kbd "s-n") 'elscreen-clone)
-(global-set-key (kbd "s-w") 'elscreen-kill)
-(global-set-key (kbd "s-{") 'elscreen-previous)
-(global-set-key (kbd "s-}") 'elscreen-next)
-
-(global-set-key (kbd "s-1") 'delete-other-windows)
-(global-set-key (kbd "s-2") 'split-window-right)
-(global-set-key (kbd "s-3") 'split-window-below)
-(global-set-key (kbd "s--") 'delete-window)
-
-(global-set-key (kbd "s-b") 'ivy-switch-buffer)
-(global-set-key (kbd "s-g") 'minibuffer-keyboard-quit)
+;; buffer switching
+(bind-key "s-{" 'previous-buffer)
+(bind-key "s-}" 'next-buffer)
