@@ -178,6 +178,9 @@ This command does not push text to `kill-ring'."
 
 ;; don't move back the cursor one space after exiting evil edit mode
 (setq evil-move-cursor-back nil)
+
+;; prevent accidentally killing the frame
+(evil-ex-define-cmd "q" 'kill-this-buffer)
 #+END_SRC
 
 ** Evil Leader
