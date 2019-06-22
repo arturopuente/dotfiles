@@ -181,6 +181,19 @@ This command does not push text to `kill-ring'."
   :config
   (global-evil-surround-mode 1))
 
+(use-package evil-multiedit
+  :ensure t)
+
+(define-key evil-normal-state-map (kbd "s-d") 'evil-multiedit-match-and-next)
+(define-key evil-normal-state-map (kbd "s-D") 'evil-multiedit-match-and-prev)
+
+;; RET will toggle the region under the cursor
+(define-key evil-multiedit-state-map (kbd "RET") 'evil-multiedit-toggle-or-restrict-region)
+
+;; For moving between edit regions
+(define-key evil-multiedit-state-map (kbd "s-j") 'evil-multiedit-next)
+(define-key evil-multiedit-state-map (kbd "s-k") 'evil-multiedit-prev)
+
 (use-package expand-region
   :ensure t)
 
@@ -298,7 +311,6 @@ This command does not push text to `kill-ring'."
   (flycheck-mode +1)
   (setq flycheck-check-syntax-automatically '(save mode-enabled))
   (eldoc-mode +1)
-  (tide-hl-identifier-mode +1)
   (company-mode +1))
 
 (add-hook 'rjsx-mode-hook #'setup-tide-mode)
