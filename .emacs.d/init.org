@@ -646,6 +646,22 @@ Working with buffers
 (bind-key "s-}" 'next-buffer)
 #+END_SRC
 
+Make a window 80 chars wide. Has to be set to 84 because line numbers and the
+git gutter take up the other 4.
+
+#+BEGIN_SRC emacs-lisp :tangle yes
+(defun set-window-width (n)
+  "Set the selected window's width."
+  (adjust-window-trailing-edge (selected-window) (- n (window-width)) t))
+
+(defun set-80-columns ()
+  "Set the selected window to 84 columns, to get 80 with line numbers/gutters"
+  (interactive)
+  (set-window-width 84))
+
+(global-set-key "\C-x~" 'set-80-columns)
+#+END_SRC
+
 ** Compilation
 
 ;; Local Variables:

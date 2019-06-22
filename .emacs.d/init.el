@@ -492,3 +492,14 @@ This command does not push text to `kill-ring'."
 ;; buffer switching
 (bind-key "s-{" 'previous-buffer)
 (bind-key "s-}" 'next-buffer)
+
+(defun set-window-width (n)
+  "Set the selected window's width."
+  (adjust-window-trailing-edge (selected-window) (- n (window-width)) t))
+
+(defun set-80-columns ()
+  "Set the selected window to 84 columns, to get 80 with line numbers/gutters"
+  (interactive)
+  (set-window-width 84))
+
+(global-set-key "\C-x~" 'set-80-columns)
