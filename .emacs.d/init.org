@@ -515,7 +515,7 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "s-p") 'projectile-find-file)
 #+END_SRC
 
-** Enhanced Emacs features
+** Spellcheck
 
 #+BEGIN_SRC emacs-lisp :tangle yes
 (use-package flyspell
@@ -523,14 +523,21 @@ This command does not push text to `kill-ring'."
         (prog-mode . flyspell-prog-mode)))
 
 (setq ispell-program-name "/usr/local/bin/ispell")
+#+END_SRC
 
-;; autocompletion
+** Autocompletion
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package company
   :ensure t
   :pin melpa)
 
 (add-hook 'after-init-hook 'global-company-mode)
+#+END_SRC
 
+** Which key
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (use-package which-key
   :ensure t)
 

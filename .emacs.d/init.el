@@ -415,7 +415,6 @@ This command does not push text to `kill-ring'."
 
 (setq ispell-program-name "/usr/local/bin/ispell")
 
-;; autocompletion
 (use-package company
   :ensure t
   :pin melpa)
