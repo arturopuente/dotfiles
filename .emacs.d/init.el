@@ -282,9 +282,6 @@ This command does not push text to `kill-ring'."
 
 (add-hook 'rjsx-mode-hook #'setup-tide-mode)
 
-(add-hook 'css-mode-hook '(lambda ()
-                          (add-hook 'after-save-hook 'web-mode-buffer-indent)))
-
 (use-package elixir-mode
   :ensure t)
 
