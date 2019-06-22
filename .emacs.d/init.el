@@ -83,6 +83,10 @@ This command does not push text to `kill-ring'."
 (setq delete-by-moving-to-trash t)
 (setq trash-directory "~/.Trash")
 
+;; Don't count two spaces after a period as the end of a sentence.
+;; Just one space is needed.
+(setq sentence-end-double-space nil)
+
 ;; display a simplified view by default
 (add-hook 'dired-mode-hook
   (lambda ()
