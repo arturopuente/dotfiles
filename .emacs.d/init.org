@@ -279,10 +279,11 @@ This command does not push text to `kill-ring'."
 (setq ivy-initial-inputs-alist nil)
 
 (use-package ace-window
-  :ensure t)
-
-(global-set-key (kbd "M-o") 'ace-window)
-(setq aw-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l))
+  :ensure t
+  :config
+  (setq aw-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l))
+  (ace-window-display-mode)
+  :bind ("s-o" . ace-window))
 
 (use-package undo-tree
   :ensure t
@@ -578,21 +579,21 @@ well, so might as well rebind the splitting key bindings to do just that to
 reduce the repetition.
 
 #+BEGIN_SRC emacs-lisp :tangle yes
-(defun vsplit-other-window ()
+(defun split-right-and-switch ()
   "Splits the window vertically and switches to that window."
   (interactive)
-  (split-window-vertically)
+  (split-window-right)
   (other-window 1 nil))
 
-(defun hsplit-other-window ()
+(defun split-below-and-switch ()
   "Splits the window horizontally and switches to that window."
   (interactive)
-  (split-window-horizontally)
+  (split-window-below)
   (other-window 1 nil))
 
 (bind-key "s-1" 'delete-other-windows)
-(bind-key "s-2" 'vsplit-other-window)
-(bind-key "s-3" 'hsplit-other-window)
+(bind-key "s-2" 'split-right-and-switch)
+(bind-key "s-3" 'split-below-and-switch)
 (bind-key "s--" 'delete-window)
 #+END_SRC
 
