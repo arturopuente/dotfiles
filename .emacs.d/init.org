@@ -216,6 +216,7 @@ This command does not push text to `kill-ring'."
   "g" 'magit-status
   "n" 'dired
   "j" (let ((map (make-sparse-keymap)))
+        (define-key map (kbd "t") 'jest-popup)
         (define-key map (kbd "j") 'tide-jump-to-definition)
         (define-key map (kbd "b") 'tide-jump-back)
         map)
@@ -335,6 +336,16 @@ This command does not push text to `kill-ring'."
   :ensure t)
 #+END_SRC
 
+** Python
+
+This is required because the jest package depends on functions from this, for
+some reason.
+
+#+BEGIN_SRC emacs-lisp :tangle yes
+(use-package python-pytest
+  :ensure t)
+#+END_SRC
+
 ** JavaScript
 
 #+BEGIN_SRC emacs-lisp :tangle yes
@@ -367,6 +378,13 @@ This command does not push text to `kill-ring'."
   (company-mode +1))
 
 (add-hook 'rjsx-mode-hook #'setup-tide-mode)
+#+END_SRC
+
+** Jest
+
+#+BEGIN_SRC emacs-lisp :tangle yes
+(use-package jest
+  :ensure t)
 #+END_SRC
 
 ** Elixir

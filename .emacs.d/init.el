@@ -167,6 +167,7 @@ This command does not push text to `kill-ring'."
   "g" 'magit-status
   "n" 'dired
   "j" (let ((map (make-sparse-keymap)))
+        (define-key map (kbd "t") 'jest-popup)
         (define-key map (kbd "j") 'tide-jump-to-definition)
         (define-key map (kbd "b") 'tide-jump-back)
         map)
@@ -269,6 +270,9 @@ This command does not push text to `kill-ring'."
 (use-package rails-log-mode
   :ensure t)
 
+(use-package python-pytest
+  :ensure t)
+
 ;; better support for jsx
 (use-package rjsx-mode
   :ensure t
@@ -298,6 +302,9 @@ This command does not push text to `kill-ring'."
   (company-mode +1))
 
 (add-hook 'rjsx-mode-hook #'setup-tide-mode)
+
+(use-package jest
+  :ensure t)
 
 (use-package elixir-mode
   :ensure t)
