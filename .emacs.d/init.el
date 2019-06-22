@@ -7,17 +7,24 @@
 
 (require 'use-package)
 
+(when (string-equal system-type "darwin")
+  ;; prevent issues with dired in macOS
+  (setq dired-use-ls-dired nil)
+
+  (setq delete-by-moving-to-trash t)
+  (setq trash-directory "~/.Trash")
+
+  ;; Don't make new frames when opening a new file with Emacs
+  (setq ns-pop-up-frames nil)
+
+  (put 'ns-print-buffer 'disabled t)
+  (put 'suspend-frame 'disabled t))
+
 (use-package exec-path-from-shell
   :ensure t)
 
-;; when not called from inside a terminal, GUI emacs does not set the
-;; PATH or other environment variables correctly
 (when (memq window-system '(mac ns x))
   (exec-path-from-shell-initialize))
-
-;; prevent issues with dired in macOS
-(when (eq system-type 'darwin)
-  (setq dired-use-ls-dired nil))
 
 ;; yes/no to y/n
 (defalias 'yes-or-no-p 'y-or-n-p)
@@ -79,9 +86,6 @@ This command does not push text to `kill-ring'."
 (setq-default fill-column 80)
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
 (setq require-final-newline t)
-
-(setq delete-by-moving-to-trash t)
-(setq trash-directory "~/.Trash")
 
 ;; Don't count two spaces after a period as the end of a sentence.
 ;; Just one space is needed.
