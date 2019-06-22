@@ -453,9 +453,21 @@ This command does not push text to `kill-ring'."
 (evil-define-key 'normal neotree-mode-map (kbd "A") 'neotree-stretch-toggle)
 (evil-define-key 'normal neotree-mode-map (kbd "H") 'neotree-hidden-file-toggle)
 
+(defun vsplit-other-window ()
+  "Splits the window vertically and switches to that window."
+  (interactive)
+  (split-window-vertically)
+  (other-window 1 nil))
+
+(defun hsplit-other-window ()
+  "Splits the window horizontally and switches to that window."
+  (interactive)
+  (split-window-horizontally)
+  (other-window 1 nil))
+
 (bind-key "s-1" 'delete-other-windows)
-(bind-key "s-2" 'split-window-right)
-(bind-key "s-3" 'split-window-below)
+(bind-key "s-2" 'vsplit-other-window)
+(bind-key "s-3" 'hsplit-other-window)
 (bind-key "s--" 'delete-window)
 
 (bind-key "s-b" 'ivy-switch-buffer)

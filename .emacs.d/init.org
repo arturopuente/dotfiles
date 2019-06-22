@@ -573,12 +573,32 @@ This command does not push text to `kill-ring'."
 
 ** Window management
 
-#+BEGIN_SRC emacs-lisp :tangle yes
-(bind-key "s-1" 'delete-other-windows)
-(bind-key "s-2" 'split-window-right)
-(bind-key "s-3" 'split-window-below)
-(bind-key "s--" 'delete-window)
+Whenever I split windows, I usually do so and also switch to the other window as
+well, so might as well rebind the splitting key bindings to do just that to
+reduce the repetition.
 
+#+BEGIN_SRC emacs-lisp :tangle yes
+(defun vsplit-other-window ()
+  "Splits the window vertically and switches to that window."
+  (interactive)
+  (split-window-vertically)
+  (other-window 1 nil))
+
+(defun hsplit-other-window ()
+  "Splits the window horizontally and switches to that window."
+  (interactive)
+  (split-window-horizontally)
+  (other-window 1 nil))
+
+(bind-key "s-1" 'delete-other-windows)
+(bind-key "s-2" 'vsplit-other-window)
+(bind-key "s-3" 'hsplit-other-window)
+(bind-key "s--" 'delete-window)
+#+END_SRC
+
+Working with buffers
+
+#+BEGIN_SRC emacs-lisp :tangle yes
 (bind-key "s-b" 'ivy-switch-buffer)
 (bind-key "s-g" 'minibuffer-keyboard-quit)
 
