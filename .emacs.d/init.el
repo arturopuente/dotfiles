@@ -345,7 +345,7 @@ This command does not push text to `kill-ring'."
   (org-babel-do-load-languages 'org-babel-load-languages
                                 '((ruby . t)
                                   (calc . t)
-                                  (ruby . t)
+                                  (python . t)
                                   (lisp . t)
                                   (shell . t)
                                   (restclient . t)
