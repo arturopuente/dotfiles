@@ -290,10 +290,10 @@ This command does not push text to `kill-ring'."
   :mode "\\.jsx\\'"
   :mode "\\.js\\'")
 
-(with-eval-after-load 'rjsx-mode
-  (define-key rjsx-mode-map "<" nil)
-  (define-key rjsx-mode-map (kbd "C-d") nil)
-  (define-key rjsx-mode-map ">" nil))
+;; (with-eval-after-load 'rjsx-mode
+;;   (define-key rjsx-mode-map "<" nil)
+;;   (define-key rjsx-mode-map (kbd "C-d") nil)
+;;   (define-key rjsx-mode-map ">" nil))
 
 (use-package prettier-js
   :ensure t)
@@ -429,7 +429,9 @@ This command does not push text to `kill-ring'."
 
 (use-package flyspell
   :hook ((text-mode . flyspell-mode)
-        (prog-mode . flyspell-prog-mode)))
+        (python-mode . flyspell-prog-mode)
+        (ruby-mode . flyspell-prog-mode)
+        (web-mode . flyspell-prog-mode)))
 
 (setq ispell-program-name "/usr/local/bin/ispell")
 
