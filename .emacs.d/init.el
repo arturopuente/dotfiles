@@ -255,7 +255,7 @@ This command does not push text to `kill-ring'."
         (setq web-mode-code-indent-offset 2)
         (setq web-mode-css-indent-offset 2)
         (setq web-mode-enable-auto-pairing t)
-        (setq web-mode-enable-auto-expanding t)
+        (setq web-mode-enable-auto-closing t)
         (setq web-mode-enable-css-colorization t))
 
 (add-to-list 'auto-mode-alist '("\\.html?\\'" . web-mode))
@@ -289,6 +289,11 @@ This command does not push text to `kill-ring'."
   :ensure t
   :mode "\\.jsx\\'"
   :mode "\\.js\\'")
+
+(with-eval-after-load 'rjsx-mode
+  (define-key rjsx-mode-map "<" nil)
+  (define-key rjsx-mode-map (kbd "C-d") nil)
+  (define-key rjsx-mode-map ">" nil))
 
 (use-package prettier-js
   :ensure t)
@@ -405,11 +410,7 @@ This command does not push text to `kill-ring'."
 
 (add-hook 'text-mode-hook 'turn-on-auto-fill)
 
-(use-package smartparens
-  :ensure t)
-
-(require 'smartparens-config)
-(add-hook 'prog-mode-hook #'smartparens-mode)
+(electric-pair-mode 1)
 
 (use-package deadgrep
   :ensure t)

@@ -523,14 +523,10 @@ some reason.
 (add-hook 'text-mode-hook 'turn-on-auto-fill)
 #+END_SRC
 
-** Prog files
+** Electric pair mode
 
 #+BEGIN_SRC emacs-lisp :tangle yes
-(use-package smartparens
-  :ensure t)
-
-(require 'smartparens-config)
-(add-hook 'prog-mode-hook #'smartparens-mode)
+(electric-pair-mode 1)
 #+END_SRC
 
 ** File search
