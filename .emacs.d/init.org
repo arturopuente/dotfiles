@@ -320,7 +320,7 @@ This command does not push text to `kill-ring'."
         (setq web-mode-code-indent-offset 2)
         (setq web-mode-css-indent-offset 2)
         (setq web-mode-enable-auto-pairing t)
-        (setq web-mode-enable-auto-expanding t)
+        (setq web-mode-enable-auto-closing t)
         (setq web-mode-enable-css-colorization t))
 
 (add-to-list 'auto-mode-alist '("\\.html?\\'" . web-mode))
@@ -369,6 +369,11 @@ some reason.
   :ensure t
   :mode "\\.jsx\\'"
   :mode "\\.js\\'")
+
+(with-eval-after-load 'rjsx-mode
+  (define-key rjsx-mode-map "<" nil)
+  (define-key rjsx-mode-map (kbd "C-d") nil)
+  (define-key rjsx-mode-map ">" nil))
 
 (use-package prettier-js
   :ensure t)
