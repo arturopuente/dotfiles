@@ -27,5 +27,3 @@ export PKG_CONFIG_PATH="$PKG_CONFIG_PATH /usr/local/opt/zlib/lib/pkgconfig"
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH /usr/local/opt/sqlite/lib/pkgconfig"
 export LC_ALL='en_US.UTF-8'
 export LANG='en_US.UTF-8'
-
-fish_vi_key_bindings
