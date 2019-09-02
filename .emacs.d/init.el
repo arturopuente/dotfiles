@@ -103,6 +103,7 @@ This command does not push text to `kill-ring'."
 (setq make-backup-files nil
       vc-make-backup-files nil
       auto-save-default nil
+      auto-save-list-file-prefix nil
       create-lockfiles nil)
 
 ;; start new windows maximized
@@ -290,11 +291,6 @@ This command does not push text to `kill-ring'."
   :mode "\\.jsx\\'"
   :mode "\\.js\\'")
 
-;; (with-eval-after-load 'rjsx-mode
-;;   (define-key rjsx-mode-map "<" nil)
-;;   (define-key rjsx-mode-map (kbd "C-d") nil)
-;;   (define-key rjsx-mode-map ">" nil))
-
 (use-package prettier-js
   :ensure t)
 
@@ -439,6 +435,7 @@ This command does not push text to `kill-ring'."
   :ensure t
   :pin melpa)
 
+(setq company-lsp-cache-candidates 'auto)
 (add-hook 'after-init-hook 'global-company-mode)
 
 (use-package which-key
