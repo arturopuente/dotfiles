@@ -370,10 +370,12 @@ This command does not push text to `kill-ring'."
 (use-package diff-hl
   :ensure t)
 
-(global-diff-hl-mode)
-(diff-hl-margin-mode)
-(diff-hl-flydiff-mode)
-(add-hook 'magit-post-refresh-hook 'diff-hl-magit-post-refresh)
+(if (display-graphic-p)
+  (global-diff-hl-mode)
+  (diff-hl-margin-mode)
+  (diff-hl-flydiff-mode)
+  (add-hook 'magit-post-refresh-hook 'diff-hl-magit-post-refresh)
+)
 
 (use-package github-browse-file
   :ensure t)
