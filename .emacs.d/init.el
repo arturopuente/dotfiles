@@ -241,6 +241,8 @@ This command does not push text to `kill-ring'."
   (ace-window-display-mode)
   :bind ("s-o" . ace-window))
 
+(bind-key "M-s-o" 'ace-swap-window)
+
 (use-package undo-tree
   :ensure t
   :config (global-undo-tree-mode 1)
