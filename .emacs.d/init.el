@@ -317,12 +317,6 @@ This command does not push text to `kill-ring'."
 (use-package jest
   :ensure t)
 
-(use-package elixir-mode
-  :ensure t)
-
-(use-package alchemist
-  :ensure t)
-
 (use-package markdown-mode
   :ensure t
   :mode (("README\\.md\\'" . gfm-mode)
