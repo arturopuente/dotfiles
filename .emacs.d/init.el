@@ -123,7 +123,7 @@ This command does not push text to `kill-ring'."
 
 ;; best font
 (set-face-attribute 'default nil
-  :family "Monaco" :height 230 :weight 'normal)
+  :family "Monaco" :height 170 :weight 'normal)
 
 (load-theme 'leuven t)
 
