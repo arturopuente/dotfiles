@@ -251,6 +251,20 @@ This command does not push text to `kill-ring'."
 (define-key evil-multiedit-state-map (kbd "s-k") 'evil-multiedit-prev)
 #+END_SRC
 
+*** Evil occur
+
+#+BEGIN_SRC emacs-lisp :tangle yes
+(evil-set-initial-state 'occur-mode 'normal)
+
+(define-key occur-mode-map (kbd "C-x C-q") 'occur-edit-mode)
+(define-key occur-mode-map (kbd "C-c C-c") 'occur-mode-goto-occurrence)
+
+(define-key occur-edit-mode-map (kbd "C-x C-q") 'occur-cease-edit)
+(define-key occur-edit-mode-map (kbd "C-c C-c") 'occur-cease-edit)
+
+(global-set-key (kbd "C-c o") 'occur)
+#+END_SRC
+
 ** Code navigation
 
 #+BEGIN_SRC emacs-lisp :tangle yes
@@ -285,6 +299,8 @@ This command does not push text to `kill-ring'."
 (define-key ivy-minibuffer-map (kbd "s-j") 'ivy-next-line)
 (define-key ivy-minibuffer-map (kbd "C-o") 'ivy-occur)
 (define-key ivy-minibuffer-map (kbd "<return>") 'ivy-alt-done)
+
+(evil-set-initial-state 'ivy-occur-grep-mode 'normal)
 
 (use-package flx
   :ensure t)
