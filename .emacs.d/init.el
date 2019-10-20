@@ -371,6 +371,8 @@ This command does not push text to `kill-ring'."
 (use-package magit
   :ensure t)
 
+(setq magit-display-buffer-function 'magit-display-buffer-same-window-except-diff-v1)
+
 (use-package forge
   :ensure t
   :after magit)
