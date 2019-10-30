@@ -288,7 +288,7 @@ This command does not push text to `kill-ring'."
 (use-package chruby
   :ensure t)
 
-(chruby "ruby-2.6")
+(add-hook 'ruby-mode-hook #'chruby-use-corresponding)
 
 (use-package yaml-mode
   :ensure t)
