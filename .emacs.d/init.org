@@ -3,6 +3,7 @@
 ** Package and archive configuration
 
 #+BEGIN_SRC emacs-lisp :tangle yes
+;; call M-x package-install use-package
 (require 'package)
 
 (add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/"))
@@ -279,6 +280,9 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "C-h f") #'helpful-callable)
 (global-set-key (kbd "C-h v") #'helpful-variable)
 (global-set-key (kbd "C-h k") #'helpful-key)
+
+(use-package counsel
+  :ensure t)
 
 (use-package swiper
   :ensure t
