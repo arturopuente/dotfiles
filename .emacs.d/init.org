@@ -219,6 +219,7 @@ This command does not push text to `kill-ring'."
   "2" 'split-right-and-switch
   "3" 'split-below-and-switch
   "-" 'delete-window
+  "o" 'ace-window
   "v" 'vc-annotate
   "c" 'avy-goto-char-2
   "g" 'magit-status
