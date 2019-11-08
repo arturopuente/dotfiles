@@ -124,7 +124,11 @@ This command does not push text to `kill-ring'."
 
 ;; best font
 (set-face-attribute 'default nil
-  :family "Monaco" :height 170 :weight 'normal)
+                    :family "Ubuntu Mono" :height 150 :weight 'normal)
+
+(when (string-equal system-type "darwin")
+  (set-face-attribute 'default nil
+                      :family "Monaco" :height 170 :weight 'normal))
 
 (load-theme 'leuven t)
 
