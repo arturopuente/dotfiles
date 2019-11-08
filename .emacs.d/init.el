@@ -162,6 +162,10 @@ This command does not push text to `kill-ring'."
   :ensure t)
 
 (evil-leader/set-key
+  "1" 'delete-other-windows
+  "2" 'split-right-and-switch
+  "3" 'split-below-and-switch
+  "-" 'delete-window
   "v" 'vc-annotate
   "c" 'avy-goto-char-2
   "g" 'magit-status
@@ -497,11 +501,6 @@ This command does not push text to `kill-ring'."
   (interactive)
   (split-window-below)
   (other-window 1 nil))
-
-(bind-key "s-1" 'delete-other-windows)
-(bind-key "s-2" 'split-right-and-switch)
-(bind-key "s-3" 'split-below-and-switch)
-(bind-key "s--" 'delete-window)
 
 (bind-key "s-b" 'ivy-switch-buffer)
 (bind-key "s-g" 'minibuffer-keyboard-quit)
