@@ -1,3 +1,4 @@
+;; call M-x package-install use-package
 (require 'package)
 
 (add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/"))
@@ -123,7 +124,11 @@ This command does not push text to `kill-ring'."
 
 ;; best font
 (set-face-attribute 'default nil
-  :family "Monaco" :height 170 :weight 'normal)
+                    :family "Ubuntu Mono" :height 150 :weight 'normal)
+
+(when (string-equal system-type "darwin")
+  (set-face-attribute 'default nil
+                      :family "Monaco" :height 170 :weight 'normal))
 
 (load-theme 'leuven t)
 
@@ -161,6 +166,13 @@ This command does not push text to `kill-ring'."
   :ensure t)
 
 (evil-leader/set-key
+  "1" 'delete-other-windows
+  "2" 'split-right-and-switch
+  "3" 'split-below-and-switch
+  "9" 'winner-undo
+  "0" 'winner-redo
+  "-" 'delete-window
+  "o" 'ace-window
   "v" 'vc-annotate
   "c" 'avy-goto-char-2
   "g" 'magit-status
@@ -214,6 +226,9 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "C-h f") #'helpful-callable)
 (global-set-key (kbd "C-h v") #'helpful-variable)
 (global-set-key (kbd "C-h k") #'helpful-key)
+
+(use-package counsel
+  :ensure t)
 
 (use-package swiper
   :ensure t
@@ -493,11 +508,6 @@ This command does not push text to `kill-ring'."
   (interactive)
   (split-window-below)
   (other-window 1 nil))
-
-(bind-key "s-1" 'delete-other-windows)
-(bind-key "s-2" 'split-right-and-switch)
-(bind-key "s-3" 'split-below-and-switch)
-(bind-key "s--" 'delete-window)
 
 (when (fboundp 'winner-mode)
       (winner-mode 1))
