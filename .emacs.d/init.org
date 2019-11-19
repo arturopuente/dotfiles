@@ -651,6 +651,12 @@ reduce the repetition.
 Working with buffers
 
 #+BEGIN_SRC emacs-lisp :tangle yes
+(when (fboundp 'winner-mode)
+      (winner-mode 1))
+
+(bind-key "s-9" 'winner-undo)
+(bind-key "s-0" 'winner-redo)
+
 (bind-key "s-b" 'ivy-switch-buffer)
 (bind-key "s-g" 'minibuffer-keyboard-quit)
 

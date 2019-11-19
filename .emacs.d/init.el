@@ -499,6 +499,12 @@ This command does not push text to `kill-ring'."
 (bind-key "s-3" 'split-below-and-switch)
 (bind-key "s--" 'delete-window)
 
+(when (fboundp 'winner-mode)
+      (winner-mode 1))
+
+(bind-key "s-9" 'winner-undo)
+(bind-key "s-0" 'winner-redo)
+
 (bind-key "s-b" 'ivy-switch-buffer)
 (bind-key "s-g" 'minibuffer-keyboard-quit)
 
