@@ -87,10 +87,10 @@ This command does not push text to `kill-ring'."
 
 #+BEGIN_SRC emacs-lisp :tangle yes
 (setq default-directory "~/dev/projects")
-(setq custom-file "~/.emacs.d/custom.el")
+(setq custom-file "~/.config/emacs/custom.el")
 (load custom-file 'noerror)
 
-;; ~/.emacs.d/init.el is a symlink
+;; ~/.config/emacs/init.el is a symlink
 (setq vc-follow-symlinks t)
 
 ;; remove startup messages
@@ -610,7 +610,7 @@ some reason.
 (use-package yasnippet
   :ensure t)
 
-(setq yas-snippet-dirs '("~/.emacs.d/snippets"))
+(setq yas-snippet-dirs '("~/.config/emacs/snippets"))
 
 (yas-reload-all)
 (add-hook 'prog-mode-hook #'yas-minor-mode)
