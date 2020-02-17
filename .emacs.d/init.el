@@ -426,6 +426,30 @@ This command does not push text to `kill-ring'."
 (evil-define-key 'normal vc-annotate-mode-map (kbd "A") 'vc-annotate-toggle-annotation-visibility)
 (evil-define-key 'normal vc-annotate-mode-map (kbd "RET") 'vc-annotate-goto-line)
 
+(use-package xterm-color
+  :ensure t)
+
+(defun magit-process-filter (proc string)
+  "Default filter used by `magit-start-process'."
+  (with-current-buffer (process-buffer proc)
+    (let ((inhibit-read-only t)
+        (string (xterm-color-filter (replace-regexp-in-string "\r\n" "\n" string))))
+      (goto-char (process-mark proc))
+      ;; Find last ^M in string.  If one was found, ignore
+      ;; everything before it and delete the current line.
+      (when-let ((ret-pos (cl-position ?\r string :from-end t)))
+        (cl-callf substring string (1+ ret-pos))
+        (delete-region (line-beginning-position) (point)))
+      (insert (propertize string 'magit-section
+                          (process-get proc 'section)))
+      (set-marker (process-mark proc) (point))
+      ;; Make sure prompts are matched after removing ^M.
+      (magit-process-yes-or-no-prompt proc string)
+      (magit-process-username-prompt  proc string)
+      (magit-process-password-prompt  proc string)
+      (run-hook-with-args-until-success 'magit-process-prompt-functions
+                                        proc string))))
+
 (use-package restclient
   :ensure t)
 
