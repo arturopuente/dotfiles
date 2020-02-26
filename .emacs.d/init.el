@@ -334,18 +334,25 @@ This command does not push text to `kill-ring'."
   :ensure t
   :config (setq json-reformat:indent-width 2))
 
-(use-package tide
+(use-package lsp-mode
+  :ensure t
+  :hook (
+         (rjsx-mode . lsp)
+         (ruby-mode . lsp)
+         (json-mode . lsp)
+         (web-mode . lsp)
+         (lsp-mode . lsp-enable-which-key-integration))
+  :commands lsp)
+
+(use-package lsp-ui
   :ensure t)
 
-(defun setup-tide-mode ()
-  (interactive)
-  (tide-setup)
-  (flycheck-mode +1)
-  (setq flycheck-check-syntax-automatically '(save mode-enabled))
-  (eldoc-mode +1)
-  (company-mode +1))
+(use-package lsp-ui :commands lsp-ui-mode)
+(use-package company-lsp :commands company-lsp)
+(use-package lsp-ivy :commands lsp-ivy-workspace-symbol)
 
-(add-hook 'rjsx-mode-hook #'setup-tide-mode)
+(setq gc-cons-threshold 100000000)
+(setq read-process-output-max (* 1024 1024)) ;; 1mb
 
 (use-package jest
   :ensure t)
