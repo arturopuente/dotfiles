@@ -167,7 +167,10 @@ This command does not push text to `kill-ring'."
   (set-face-attribute 'default nil
                       :family "Monaco" :height 170 :weight 'normal))
 
-(load-theme 'leuven t)
+(use-package color-theme-sanityinc-tomorrow
+  :ensure t)
+(load-theme 'sanityinc-tomorrow-blue t)
+(set-cursor-color "#FFE500")
 
 ;; cursor options
 (blink-cursor-mode 0)
