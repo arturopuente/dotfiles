@@ -171,6 +171,7 @@ This command does not push text to `kill-ring'."
   :ensure t)
 (load-theme 'sanityinc-tomorrow-blue t)
 (set-cursor-color "#FFE500")
+(set-face-attribute 'region nil :background "#00FFE5" :foreground "#000")
 
 ;; cursor options
 (blink-cursor-mode 0)
@@ -258,6 +259,9 @@ This command does not push text to `kill-ring'."
 
 (define-key evil-normal-state-map (kbd "s-d") 'evil-multiedit-match-and-next)
 (define-key evil-normal-state-map (kbd "s-D") 'evil-multiedit-match-and-prev)
+
+(set-face-background 'iedit-occurrence "#F50")
+(set-face-foreground 'iedit-occurrence "#000")
 
 ;; RET will toggle the region under the cursor
 (define-key evil-multiedit-state-map (kbd "RET") 'evil-multiedit-toggle-or-restrict-region)
