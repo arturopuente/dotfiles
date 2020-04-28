@@ -12,6 +12,13 @@
 (package-initialize)
 
 (require 'use-package)
+
+(defun load-directory (dir)
+  (let ((load-it (lambda (f)
+        (load-file (concat (file-name-as-directory dir) f)))
+      ))
+  (mapc load-it (directory-files dir nil "\\.el$"))))
+(load-directory "~/.config/emacs/pkgs")
 #+END_SRC
 
 ** Playing nice with macOS
