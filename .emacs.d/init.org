@@ -128,17 +128,6 @@ This command does not push text to `kill-ring'."
 (show-paren-mode t)
 #+END_SRC
 
-** Dired settings
-
-#+BEGIN_SRC emacs-lisp :tangle yes
-;; display a simplified view by default
-(add-hook 'dired-mode-hook
-  (lambda ()
-    (dired-hide-details-mode)))
-#+END_SRC
-
-** Disabling backups
-
 #+BEGIN_SRC emacs-lisp :tangle yes
 ;; disable backups
 (setq make-backup-files nil
@@ -146,6 +135,15 @@ This command does not push text to `kill-ring'."
       auto-save-default nil
       auto-save-list-file-prefix nil
       create-lockfiles nil)
+#+END_SRC
+
+** Dired settings
+
+#+BEGIN_SRC emacs-lisp :tangle yes
+;; display a simplified view by default
+(add-hook 'dired-mode-hook
+  (lambda ()
+    (dired-hide-details-mode)))
 #+END_SRC
 
 ** GUI options
@@ -176,7 +174,7 @@ This command does not push text to `kill-ring'."
 
 (use-package color-theme-sanityinc-tomorrow
   :ensure t)
-(load-theme 'sanityinc-tomorrow-blue t)
+(load-theme 'kaolin-valley-dark t)
 (set-cursor-color "#FFE500")
 (set-face-attribute 'region nil :background "#00FFE5" :foreground "#000")
 

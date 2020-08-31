@@ -102,17 +102,17 @@ This command does not push text to `kill-ring'."
 
 (show-paren-mode t)
 
-;; display a simplified view by default
-(add-hook 'dired-mode-hook
-  (lambda ()
-    (dired-hide-details-mode)))
-
 ;; disable backups
 (setq make-backup-files nil
       vc-make-backup-files nil
       auto-save-default nil
       auto-save-list-file-prefix nil
       create-lockfiles nil)
+
+;; display a simplified view by default
+(add-hook 'dired-mode-hook
+  (lambda ()
+    (dired-hide-details-mode)))
 
 ;; start new windows maximized
 (setq frame-resize-pixelwise t)
@@ -139,7 +139,7 @@ This command does not push text to `kill-ring'."
 
 (use-package color-theme-sanityinc-tomorrow
   :ensure t)
-(load-theme 'sanityinc-tomorrow-blue t)
+(load-theme 'kaolin-valley-dark t)
 (set-cursor-color "#FFE500")
 (set-face-attribute 'region nil :background "#00FFE5" :foreground "#000")
 
