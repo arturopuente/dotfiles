@@ -496,14 +496,6 @@ This command does not push text to `kill-ring'."
 
 (global-set-key (kbd "s-p") 'projectile-find-file)
 
-(use-package flyspell
-  :hook ((text-mode . flyspell-mode)
-        (python-mode . flyspell-prog-mode)
-        (ruby-mode . flyspell-prog-mode)
-        (web-mode . flyspell-prog-mode)))
-
-(setq ispell-program-name "/usr/local/bin/ispell")
-
 (use-package company
   :ensure t
   :pin melpa)

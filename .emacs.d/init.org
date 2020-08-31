@@ -619,18 +619,6 @@ some reason.
 (global-set-key (kbd "s-p") 'projectile-find-file)
 #+END_SRC
 
-** Spellcheck
-
-#+BEGIN_SRC emacs-lisp :tangle yes
-(use-package flyspell
-  :hook ((text-mode . flyspell-mode)
-        (python-mode . flyspell-prog-mode)
-        (ruby-mode . flyspell-prog-mode)
-        (web-mode . flyspell-prog-mode)))
-
-(setq ispell-program-name "/usr/local/bin/ispell")
-#+END_SRC
-
 ** Autocompletion
 
 #+BEGIN_SRC emacs-lisp :tangle yes
