@@ -139,7 +139,11 @@ This command does not push text to `kill-ring'."
 
 (use-package color-theme-sanityinc-tomorrow
   :ensure t)
-(load-theme 'kaolin-valley-dark t)
+
+(use-package dracula-theme
+  :ensure t)
+
+(load-theme 'dracula t)
 (set-cursor-color "#FFE500")
 (set-face-attribute 'region nil :background "#00FFE5" :foreground "#000")
 
