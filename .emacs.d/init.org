@@ -172,12 +172,10 @@ This command does not push text to `kill-ring'."
   (set-face-attribute 'default nil
                       :family "Monaco" :height 170 :weight 'normal))
 
-(use-package color-theme-sanityinc-tomorrow
-  :ensure t)
-
 (use-package dracula-theme
   :ensure t)
 
+(setq dracula-alternate-mode-line-and-minibuffer t)
 (load-theme 'dracula t)
 (set-cursor-color "#FFE500")
 (set-face-attribute 'region nil :background "#00FFE5" :foreground "#000")
