@@ -37,6 +37,9 @@
 ;; yes/no to y/n
 (defalias 'yes-or-no-p 'y-or-n-p)
 
+;; remap keyboard-quit
+(define-key key-translation-map (kbd "ESC") (kbd "C-g"))
+
 ;; delete the region when typing
 (delete-selection-mode t)
 
