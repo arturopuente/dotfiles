@@ -169,13 +169,19 @@ This command does not push text to `kill-ring'."
 
 ;; best vim emulation mode
 (use-package evil
-  :ensure t)
+  :ensure t
+  :init (setq evil-want-keybinding nil)
+  :config (evil-mode))
 
-(evil-mode 1)
 (define-key evil-normal-state-map (kbd "C-f") 'evil-scroll-up)
 
 ;; don't move back the cursor one space after exiting evil edit mode
 (setq evil-move-cursor-back nil)
+
+(use-package evil-collection
+  :after evil
+  :ensure t
+  :config (evil-collection-init))
 
 ;; best package name
 (use-package evil-leader
@@ -341,11 +347,20 @@ This command does not push text to `kill-ring'."
   :mode "\\.js\\'"
   :config (setq flycheck-checker 'javascript-eslint))
 
+(use-package typescript-mode
+  :mode "\\.tsx?$"
+  :config (setq flycheck-checker 'typescript-eslint)
+  :hook
+  (typescript-mode . lsp)
+  :custom
+  (typescript-indent-level 2))
+
 (use-package prettier-js
   :ensure t)
 
 (add-hook 'js2-mode-hook 'prettier-js-mode)
 (add-hook 'rjsx-mode-hook 'prettier-js-mode)
+(add-hook 'typescript-mode-hook 'prettier-js-mode)
 
 (use-package json-mode
   :ensure t
@@ -364,7 +379,11 @@ This command does not push text to `kill-ring'."
   (eldoc-mode +1)
   (company-mode +1))
 
+(set-face-attribute 'flycheck-error nil :foreground "white" :background "red")
+
 (add-hook 'rjsx-mode-hook #'setup-tide-mode)
+(add-hook 'typescript-mode-hook #'setup-tide-mode)
+(setq tide-tsserver-executable "node_modules/typescript/bin/tsserver")
 
 (setq gc-cons-threshold 100000000)
 (setq read-process-output-max (* 1024 1024)) ;; 1mb
@@ -417,9 +436,6 @@ This command does not push text to `kill-ring'."
 (use-package forge
   :ensure t
   :after magit)
-
-(use-package evil-magit
-  :ensure t)
 
 (use-package git-link
   :ensure t)
