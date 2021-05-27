@@ -264,7 +264,6 @@ This command does not push text to `kill-ring'."
     (ivy-mode 1)
     (setq ivy-use-virtual-buffers t)
     (setq enable-recursive-minibuffers t)
-    (global-set-key "\C-s" 'swiper)
     (global-set-key (kbd "M-x") 'counsel-M-x)
     (global-set-key (kbd "C-x C-f") 'counsel-find-file)
     (global-set-key (kbd "C-x l") 'counsel-locate)
@@ -433,10 +432,6 @@ This command does not push text to `kill-ring'."
 
 (setq magit-display-buffer-function 'magit-display-buffer-same-window-except-diff-v1)
 
-(use-package forge
-  :ensure t
-  :after magit)
-
 (use-package git-link
   :ensure t)
 
@@ -452,20 +447,6 @@ This command does not push text to `kill-ring'."
 
 (use-package github-browse-file
   :ensure t)
-
-(evil-set-initial-state 'vc-annotate-mode 'normal)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "q") 'quit-window)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "a") 'vc-annotate-revision-previous-to-line)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "d") 'vc-annotate-show-diff-revision-at-line)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "=") 'vc-annotate-show-diff-revision-at-line)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "F") 'vc-annotate-find-revision-at-line)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "J") 'vc-annotate-revision-at-line)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "L") 'vc-annotate-show-log-revision-at-line)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "C-j") 'vc-annotate-next-revision)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "C-k") 'vc-annotate-prev-revision)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "W") 'vc-annotate-working-revision)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "A") 'vc-annotate-toggle-annotation-visibility)
-(evil-define-key 'normal vc-annotate-mode-map (kbd "RET") 'vc-annotate-goto-line)
 
 (use-package xterm-color
   :ensure t)
@@ -544,16 +525,6 @@ This command does not push text to `kill-ring'."
 (global-set-key (kbd "s-t") 'neotree-toggle)
 
 (setq neo-theme 'ascii)
-
-(evil-define-key 'normal neotree-mode-map (kbd "TAB") 'neotree-enter)
-(evil-define-key 'normal neotree-mode-map (kbd "RET") 'neotree-enter)
-(evil-define-key 'normal neotree-mode-map (kbd "o") 'neotree-quick-look)
-(evil-define-key 'normal neotree-mode-map (kbd "q") 'neotree-hide)
-(evil-define-key 'normal neotree-mode-map (kbd "r") 'neotree-refresh)
-(evil-define-key 'normal neotree-mode-map (kbd "j") 'neotree-next-line)
-(evil-define-key 'normal neotree-mode-map (kbd "k") 'neotree-previous-line)
-(evil-define-key 'normal neotree-mode-map (kbd "A") 'neotree-stretch-toggle)
-(evil-define-key 'normal neotree-mode-map (kbd "H") 'neotree-hidden-file-toggle)
 
 (defun split-right-and-switch ()
   "Splits the window vertically and switches to that window."
