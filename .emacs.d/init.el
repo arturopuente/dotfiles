@@ -277,6 +277,9 @@ This command does not push text to `kill-ring'."
 
 (evil-set-initial-state 'ivy-occur-grep-mode 'normal)
 
+(use-package wgrep
+  :ensure t)
+
 (use-package flx
   :ensure t)
 
