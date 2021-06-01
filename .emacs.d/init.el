@@ -389,6 +389,7 @@ This command does not push text to `kill-ring'."
 
 (setq gc-cons-threshold 100000000)
 (setq read-process-output-max (* 1024 1024)) ;; 1mb
+(setq lsp-headerline-breadcrumb-enable nil)
 
 (use-package jest
   :ensure t)
