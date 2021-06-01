@@ -307,6 +307,12 @@ This command does not push text to `kill-ring'."
 (use-package avy
   :ensure t)
 
+(use-package drag-stuff
+  :ensure t)
+
+(drag-stuff-global-mode 1)
+(drag-stuff-define-keys)
+
 (use-package web-mode
   :ensure t
   :init (setq web-mode-markup-indent-offset 2)

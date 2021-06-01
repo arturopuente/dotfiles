@@ -369,6 +369,13 @@ This command does not push text to `kill-ring'."
 ;; jump like vim easymotion
 (use-package avy
   :ensure t)
+
+(use-package drag-stuff
+  :ensure t)
+
+(drag-stuff-global-mode 1)
+(drag-stuff-define-keys)
+
 #+END_SRC
 
 ** Web
