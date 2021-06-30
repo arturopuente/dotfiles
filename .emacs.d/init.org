@@ -374,7 +374,9 @@ This command does not push text to `kill-ring'."
   :ensure t)
 
 (drag-stuff-global-mode 1)
-(drag-stuff-define-keys)
+(define-key drag-stuff-mode-map (drag-stuff--kbd 'up) 'drag-stuff-up)
+(define-key drag-stuff-mode-map (drag-stuff--kbd 'down) 'drag-stuff-down)
+
 
 #+END_SRC
 
