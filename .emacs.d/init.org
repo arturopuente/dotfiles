@@ -365,6 +365,7 @@ This command does not push text to `kill-ring'."
   :ensure t)
 
 (global-undo-tree-mode)
+(evil-set-undo-system 'undo-tree)
 
 ;; jump like vim easymotion
 (use-package avy
