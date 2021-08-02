@@ -299,9 +299,9 @@ This command does not push text to `kill-ring'."
 (bind-key "M-s-o" 'ace-swap-window)
 
 (use-package undo-tree
-  :ensure t
-  :config (global-undo-tree-mode 1)
-  :bind (("C-x u" . undo)))
+  :ensure t)
+
+(global-undo-tree-mode)
 
 ;; jump like vim easymotion
 (use-package avy
