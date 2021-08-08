@@ -132,24 +132,39 @@ This command does not push text to `kill-ring'."
 (setq display-line-numbers-type 'relative)
 (global-display-line-numbers-mode)
 
+;; (use-package dracula-theme
+;;   :ensure t)
+
+;; (setq dracula-alternate-mode-line-and-minibuffer t)
+;; (load-theme 'dracula t)
+;; (set-cursor-color "#FFE500")
+;; (set-face-attribute 'region nil :background "#00FFE5" :foreground "#000")
+
+(use-package modus-themes
+  :ensure t
+  :init
+  ;; Add all your customizations prior to loading the themes
+  (setq modus-themes-italic-constructs t
+        modus-themes-bold-constructs nil
+        modus-themes-region '(bg-only no-extend))
+
+  ;; Load the theme files before enabling a theme
+  (modus-themes-load-themes)
+  :config
+  ;; Load the theme of your choice:
+  (modus-themes-load-operandi) ;; OR (modus-themes-load-vivendi)
+  :bind ("<f5>" . modus-themes-toggle))
+
+;; cursor options
+(blink-cursor-mode 0)
+
 ;; best font
 (set-face-attribute 'default nil
                     :family "Ubuntu Mono" :height 150 :weight 'normal)
 
 (when (string-equal system-type "darwin")
   (set-face-attribute 'default nil
-                      :family "Monaco" :height 170 :weight 'normal))
-
-(use-package dracula-theme
-  :ensure t)
-
-(setq dracula-alternate-mode-line-and-minibuffer t)
-(load-theme 'dracula t)
-(set-cursor-color "#FFE500")
-(set-face-attribute 'region nil :background "#00FFE5" :foreground "#000")
-
-;; cursor options
-(blink-cursor-mode 0)
+                      :family "Monaco" :height 190 :weight 'normal))
 
 (use-package minions
   :ensure t
