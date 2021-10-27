@@ -1,4 +1,4 @@
-. ~/dev/arturo/dotfiles/fish/ext/git_prompt.fish
+#. ~/dev/arturo/dotfiles/fish/ext/git_prompt.fish
 
 function fish_prompt
   # pwd
@@ -7,7 +7,7 @@ function fish_prompt
 
   # git
   printf ' '
-  __git_prompt
+  #__git_prompt
 
   set_color normal
   set_color magenta
