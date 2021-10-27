@@ -3,12 +3,12 @@ set -gx fish_color_git_staged blue
 set -gx fish_color_git_dirty red
 
 function __git_prompt --description 'Write out the git prompt'
-  set -l branch (git rev-parse --abbrev-ref HEAD ^/dev/null)
+  set -l branch (git rev-parse --abbrev-ref HEAD)
   if test -z $branch
     return
   end
 
-  set -l index (git status --porcelain ^/dev/null|cut -c 1-2|sort -u)
+  set -l index (git status --porcelain |cut -c 1-2|sort -u)
 
   if test -z "$index"
     set_color $fish_color_git_clean

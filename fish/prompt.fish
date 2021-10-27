@@ -1,4 +1,4 @@
-. ~/dev/dotfiles/fish/ext/git_prompt.fish
+. ~/dev/arturo/dotfiles/fish/ext/git_prompt.fish
 
 function fish_prompt
   # pwd

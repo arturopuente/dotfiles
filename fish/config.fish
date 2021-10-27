@@ -1,3 +1,3 @@
-. ~/dev/dotfiles/fish/env.fish
-. ~/dev/dotfiles/fish/aliases.fish
-. ~/dev/dotfiles/fish/prompt.fish
+. ~/dev/arturo/dotfiles/fish/env.fish
+. ~/dev/arturo/dotfiles/fish/aliases.fish
+. ~/dev/arturo/dotfiles/fish/prompt.fish
