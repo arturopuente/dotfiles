@@ -1,6 +1,6 @@
 alias l="ls -lah"
 alias cda="cd ~/dev/arturo"
-alias cdp="cd ~/dev/able"
+alias cdp="cd ~/dev/cf"
 alias cdd="cd ~/Downloads"
 
 # Ruby
