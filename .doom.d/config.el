@@ -116,10 +116,14 @@
 )
 
 (global-set-key (kbd "s-o") 'ace-window)
+(global-set-key (kbd "M-s-o") 'ace-swap-window)
 (global-set-key (kbd "s-O") 'ns-open-file-using-panel)
 (global-set-key (kbd "s-p") 'project-find-file)
 (global-set-key (kbd "s-t") 'neotree-toggle)
 (global-set-key (kbd "s-b") 'consult-recent-file)
+
+(bind-key "s-{" 'previous-buffer)
+(bind-key "s-}" 'next-buffer)
 
 (add-hook 'js2-mode-hook 'prettier-js-mode)
 (add-hook 'rjsx-mode-hook 'prettier-js-mode)
@@ -131,9 +135,6 @@
   (diff-hl-flydiff-mode)
   (add-hook 'magit-post-refresh-hook 'diff-hl-magit-post-refresh)
 )
-
-(bind-key "s-{" 'previous-buffer)
-(bind-key "s-}" 'next-buffer)
 
 (remove-hook 'undo-fu-mode-hook #'global-undo-fu-session-mode)
 (setq undo-tree-auto-save-history nil)
