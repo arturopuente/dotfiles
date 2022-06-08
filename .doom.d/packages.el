@@ -55,3 +55,6 @@
   :recipe (:host github :repo "zerolfx/copilot.el" :files ("*.el" "dist")))
 (package! fish-mode)
 (package! unfill)
+
+;; this clashes with copilot tab completion
+(package! emmet-mode :disable t)

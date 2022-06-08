@@ -145,9 +145,6 @@
 (remove-hook 'undo-fu-mode-hook #'global-undo-fu-session-mode)
 (setq undo-tree-auto-save-history nil)
 
-;; this clashes with copilot tab completion
-(define-key emmet-mode-keymap (kbd "<tab>") nil)
-
 (defun my-tab ()
   (interactive)
   (or (copilot-accept-completion)
