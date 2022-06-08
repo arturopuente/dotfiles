@@ -123,9 +123,10 @@
 (global-set-key (kbd "s-o") 'ace-window)
 (global-set-key (kbd "M-s-o") 'ace-swap-window)
 (global-set-key (kbd "s-O") 'ns-open-file-using-panel)
-(global-set-key (kbd "s-p") 'project-find-file)
+(global-set-key (kbd "s-p") '+ivy/projectile-find-file)
 (global-set-key (kbd "s-t") 'neotree-toggle)
 (global-set-key (kbd "s-b") 'consult-recent-file)
+(global-set-key (kbd "s-F") '+default/search-project)
 
 (bind-key "s-{" 'previous-buffer)
 (bind-key "s-}" 'next-buffer)
