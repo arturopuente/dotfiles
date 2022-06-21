@@ -126,10 +126,15 @@
 (global-set-key (kbd "s-p") '+ivy/projectile-find-file)
 (global-set-key (kbd "s-t") 'neotree-toggle)
 (global-set-key (kbd "s-b") 'consult-recent-file)
+(global-set-key (kbd "s-f") 'swiper)
 (global-set-key (kbd "s-F") '+default/search-project)
 
 (bind-key "s-{" 'previous-buffer)
 (bind-key "s-}" 'next-buffer)
+
+;; enable horizontal scrolling
+(setq mouse-wheel-flip-direction t)
+(setq mouse-wheel-tilt-scroll t)
 
 (add-hook 'js2-mode-hook 'prettier-js-mode)
 (add-hook 'rjsx-mode-hook 'prettier-js-mode)
