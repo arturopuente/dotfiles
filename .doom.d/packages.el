@@ -56,6 +56,8 @@
 (package! fish-mode)
 (package! unfill)
 (package! diff-hl)
+(after! counsel
+  (package! ivy-prescient))
 
 ;; this clashes with copilot tab completion
 (package! emmet-mode :disable t)
