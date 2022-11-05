@@ -1,0 +1,8 @@
+# -*- mode: snippet -*-
+# name: React#functionComponent
+# key: fc
+# --
+
+function ${1:Component}(${2:props}) {
+  return <div>${0:myComponent}</div>;
+};

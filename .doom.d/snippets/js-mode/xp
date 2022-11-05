@@ -1,0 +1,8 @@
+# -*- mode: snippet; require-final-newline: nil -*-
+# name: test block
+# key: xp
+# group: es6
+# --
+("${1:description}", (${2:value}) => {
+  $0
+});
