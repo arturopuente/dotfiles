@@ -14,8 +14,6 @@ set EDITOR vim
 # the paths at /usr/local seem to the default for intel-based systems
 # using the new apple silicon paths below
 set CHRUBY_ROOT "/opt/homebrew/Cellar/chruby/0.3.9" 
-source /opt/homebrew/Cellar/chruby-fish/0.8.2/share/chruby/chruby.fish
-source /opt/homebrew/Cellar/chruby-fish/0.8.2/share/chruby/auto.fish
 
 # For compilers to find zlib and sqlite you may need to set:
 # export LDFLAGS="$LDFLAGS -L/usr/local/opt/zlib/lib"
