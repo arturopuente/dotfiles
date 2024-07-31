@@ -10,3 +10,13 @@
 
 [alias]
   lg = log --color --graph --pretty=format:'%Cred%h%Creset%C(yellow)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset' --abbrev-commit
+
+[push]
+  autoSetupRemote = true
+  autoSetupRemote = true
+
+[pull]
+  rebase = true
+
+[merge]
+  conflictstyle = diff3
