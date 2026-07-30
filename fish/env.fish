@@ -4,6 +4,7 @@ set fish_color_cwd "bbbbbb"
 # Local Bin
 set PATH "/usr/local/bin" $PATH
 set PATH "/opt/homebrew/bin" $PATH
+set PATH "/Users/arturo/.local/bin" $PATH
 set PATH "/Users/arturo/.emacs.d/bin" $PATH
 set PATH "/Users/arturo/.yarn/bin" $PATH
 set EDITOR vim

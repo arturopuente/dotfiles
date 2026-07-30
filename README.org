@@ -1,3 +1,51 @@
-* Dotfiles
+** Dotfiles
 
-[[.emacs.d/init.org][Emacs config]]
+Using [[.config/doom][Doom emacs]].
+
+
+#+BEGIN_SRC bash
+#!/usr/bin/env bash
+# Bootstrap Emacs/Doom on a fresh macOS machine. (bash, not fish — run with `bash bootstrap.sh`)
+set -euo pipefail
+
+DOTFILES="$HOME/dev/arturo/dotfiles"
+DOOMDIR="$HOME/.config/doom"
+EMACSDIR="$HOME/.config/emacs"
+
+# 1. Prerequisites ----------------------------------------------------------
+xcode-select -p >/dev/null 2>&1 || xcode-select --install
+command -v brew >/dev/null || \
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+brew install git ripgrep fd chruby chruby-fish multimarkdown
+brew tap d12frosted/emacs-plus
+brew install emacs-plus@31 --with-native-comp
+# Monaco ships with macOS; on Linux install Ubuntu Mono instead.
+
+# 2. Dotfiles ---------------------------------------------------------------
+[ -d "$DOTFILES" ] || git clone git@github.com:arturopuente/dotfiles.git "$DOTFILES"
+
+# 3. Link the private config BEFORE installing Doom -------------------------
+mkdir -p "$(dirname "$DOOMDIR")"
+[ -e "$DOOMDIR" ] && mv "$DOOMDIR" "$DOOMDIR.bak.$(date +%s)"
+ln -s "$DOTFILES/.config/doom" "$DOOMDIR"
+
+# 4. Doom itself — `doom install` initializes the sources/doom+ submodule
+[ -d "$EMACSDIR" ] || git clone --depth 1 \
+  https://github.com/doomemacs/core "$EMACSDIR"
+
+# 5. Install. --no-config keeps Doom from scaffolding over our symlink. ------
+"$EMACSDIR/bin/doom" install --no-config -!
+
+# 6. Tree-sitter grammars, using Doom's pinned revisions ---------------------
+#    A daemon is needed: Doom doesn't load its modules under --batch.
+emacs --daemon=bootstrap
+until emacsclient -s bootstrap --eval t >/dev/null 2>&1; do sleep 2; done
+emacsclient -s bootstrap --eval "(let ((treesit-auto-install-grammar 'always))
+  (dolist (g '(javascript jsdoc typescript tsx))
+    (unless (treesit-ready-p g t) (treesit-install-language-grammar g))))"
+emacsclient -s bootstrap --eval '(kill-emacs)'
+
+# 7. Verify -----------------------------------------------------------------
+"$EMACSDIR/bin/doom" doctor
+#+END_SRC
