@@ -280,7 +280,11 @@ This command does not push text to `kill-ring'."
 (setq org-directory "~/org/")
 (setq initial-major-mode 'org-mode)
 
-(add-hook 'org-mode-hook (lambda () (setq evil-auto-indent nil)))
+;; NOTE: `evil-auto-indent' is a plain defcustom -- evil does *not* make it
+;; buffer-local -- so a bare `setq' here would clobber the global value and kill
+;; o/O indentation in every buffer (and `initial-major-mode' being org means
+;; *scratch* triggers it at startup). `setq-local' is required.
+(add-hook 'org-mode-hook (lambda () (setq-local evil-auto-indent nil)))
 
 (after! org
   (setq org-confirm-babel-evaluate nil
