@@ -1,7 +1,8 @@
 alias l="ls -lah"
 alias cda="cd ~/dev/arturo"
-alias cdp="cd ~/dev/cf"
 alias cdd="cd ~/Downloads"
+alias cdcf="cd ~/dev/cf"
+alias cdsp="cd ~/dev/sp"
 
 # Ruby
 alias b="bundle exec"
