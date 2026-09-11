@@ -39,6 +39,16 @@
 
 (map! "<f5>" #'modus-themes-toggle)
 
+;; Monaco ships a single Regular face -- no bold. Emacs fakes the missing weight
+;; by overstriking each glyph with a 1px offset, which reads as a thick, smeared
+;; font in prose-heavy buffers (org/markdown headings and **emphasis** are all
+;; bold under modus). modus routes every bold it applies through the `bold' face,
+;; so neutralising that one face removes the fake weight everywhere; headings
+;; stay distinct by colour, emphasis by its markers -- the same way IntelliJ
+;; renders Monaco. Drop this if you switch to a font with a real bold cut.
+(custom-set-faces!
+  '(bold :weight normal))
+
 (setq display-line-numbers-type 'relative)
 
 ;; Start maximized.
