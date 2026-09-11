@@ -62,8 +62,58 @@
 (use-package! minions
   :config (minions-mode 1))
 
+;; Project drawer. Doom's default `neo-theme' is 'nerd (needs a Nerd Font) and
+;; the old config downgraded that to 'ascii -- hence the flat, monochrome tree.
+;; doom-themes ships an Atom-style neotree theme instead: per-filetype icons via
+;; nerd-icons, plus a face per file category. It needs the Symbols Nerd Font:
+;;   brew install --cask font-symbols-only-nerd-font   (or M-x nerd-icons-install-fonts)
+;;
+;; NOTE: this hangs off `after! neotree', not `after! doom-themes'. doom-themes
+;; is only pulled in as a side effect of loading a theme, and we use modus -- so
+;; keying off it would leave the drawer un-iconified in sessions where nothing
+;; has triggered that load yet (e.g. a daemon with no frame).
 (after! neotree
-  (setq neo-theme 'ascii))
+  ;; Icons cost a few columns of indent; 30 gets cramped.
+  (setq neo-window-width 34)
+
+  ;; Advises neotree's entry-insertion functions. Also forces `neo-vc-integration'
+  ;; off, since vc faces and filetype faces would fight over the same labels.
+  (require 'doom-themes-ext-neotree)
+
+  (setq doom-themes-neotree-file-icons t   ; per-language icons, not Atom's five generic ones
+        doom-themes-neotree-enable-type-colors t
+        doom-themes-neotree-enable-folder-icons t
+        doom-themes-neotree-line-spacing 2)
+
+  (defface +neotree-test-file-face '((t (:inherit neo-file-link-face)))
+    "Face for spec/test file labels in neotree."
+    :group 'doom-themes-neotree)
+
+  ;; Tests/specs get their own colour, the way VS Code et al. flag them. Rules are
+  ;; scanned in order against the full path and the first match wins, so this has
+  ;; to sit ahead of the generic by-extension rules -- `add-to-list' prepends.
+  (add-to-list 'doom-themes-neotree-file-rules
+               `(,(rx (or (seq (or "_spec" "_test")
+                               "." (or "rb" "ex" "exs" "go" "py") eos)
+                          (seq "." (or "spec" "test")
+                               "." (or "js" "jsx" "mjs" "cjs" "ts" "tsx") eos)
+                          (seq "/test_" (+ (not (any "/"))) ".py" eos)
+                          (seq "/" (or "spec" "test" "tests" "__tests__") "/")))
+                 :face +neotree-test-file-face))
+
+  ;; These faces ship inheriting `neo-file-link-face' -- i.e. plain foreground
+  ;; under a theme like modus that doesn't override them, which is why the tree
+  ;; reads as black-on-white. Inherit from font-lock faces instead: every theme
+  ;; defines those, so the colours follow the <f5> operandi/vivendi toggle.
+  (custom-set-faces!
+    '(doom-themes-neotree-dir-face             :inherit font-lock-function-name-face :weight bold)
+    '(doom-themes-neotree-file-face            :inherit default)
+    '(doom-themes-neotree-text-file-face       :inherit font-lock-doc-face)
+    '(doom-themes-neotree-data-file-face       :inherit font-lock-constant-face)
+    '(doom-themes-neotree-media-file-face      :inherit font-lock-builtin-face)
+    '(doom-themes-neotree-executable-file-face :inherit font-lock-keyword-face)
+    '(doom-themes-neotree-hidden-file-face     :inherit shadow)
+    '(+neotree-test-file-face                  :inherit font-lock-warning-face)))
 
 ;; Highlight colours for evil-multiedit / iedit regions.
 (custom-set-faces!
