@@ -280,8 +280,27 @@ This command does not push text to `kill-ring'."
             tsx-ts-mode web-mode)
   #'apheleia-mode)
 
+;; NOTE: the old config pinned `markdown-command' to "multimarkdown". Left unset:
+;; Doom's default, `+markdown-compile', tries marked, pandoc, Markdown.pl and
+;; multimarkdown in turn and uses whichever is installed (pandoc, here).
+
+;; Doom's `+markdown-compile-pandoc' passes --mathjax and --highlight-style,
+;; which pandoc 3.8+ deprecates. It also sends stderr to the output buffer, so
+;; the deprecation warnings end up at the top of every preview. This version uses
+;; the new flag names and drops stderr.
+(defun +markdown-compile-pandoc-quiet (beg end output-buffer)
+  "Compile markdown to html with pandoc, if available. Returns its exit code."
+  (when (executable-find "pandoc")
+    (call-process-region beg end "pandoc" nil (list output-buffer nil) nil
+                         "-f" "markdown"
+                         "-t" "html"
+                         "--math-method=mathjax"
+                         "--syntax-highlighting=pygments")))
+
 (after! markdown-mode
-  (setq markdown-command "multimarkdown"))
+  (setq +markdown-compile-functions
+        (cl-substitute #'+markdown-compile-pandoc-quiet #'+markdown-compile-pandoc
+                       +markdown-compile-functions)))
 
 
 ;;
