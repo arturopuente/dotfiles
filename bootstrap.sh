@@ -20,6 +20,15 @@ fi
 # 3. Packages ---------------------------------------------------------------
 brew bundle --file="$DOTFILES/Brewfile" || echo "!! Some Brewfile entries failed; see above."
 
+# Licensed fonts live in iCloud Drive, not this repo
+FONTS_ZIP="$HOME/Library/Mobile Documents/com~apple~CloudDocs/mac-setup/fonts.zip"
+if [ -e "$FONTS_ZIP" ] || brctl download "$FONTS_ZIP" 2>/dev/null; then
+  for _ in $(seq 30); do unzip -tq "$FONTS_ZIP" >/dev/null 2>&1 && break; sleep 2; done
+  unzip -oq "$FONTS_ZIP" -d "$HOME/Library/Fonts" && echo "installed fonts from iCloud" || echo "!! fonts.zip not ready yet; re-run bootstrap once iCloud finishes syncing."
+else
+  echo "!! $FONTS_ZIP not found; sign in to iCloud Drive or copy fonts manually."
+fi
+
 # brew doesn't put Emacs.app in /Applications on its own
 EMACS_APP=/opt/homebrew/opt/emacs-plus@31/Emacs.app
 [ -d "$EMACS_APP" ] && [ ! -e /Applications/Emacs.app ] && ln -s "$EMACS_APP" /Applications/Emacs.app || true

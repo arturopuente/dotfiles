@@ -175,6 +175,7 @@ brew "d12frosted/emacs-plus/emacs-plus@31"
 brew "teamookla/speedtest/speedtest", trusted: true
 # Offline voice-to-text dictation app with AI enhancement
 cask "fluidvoice"
+cask "font-atkinson-hyperlegible"
 cask "font-symbols-only-nerd-font"
 # Menu bar manager
 # Tool to control external monitor brightness & volume
