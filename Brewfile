@@ -197,6 +197,7 @@ cask "orbstack"
 cask "slack"
 cask "spotify"
 cask "sublime-text"
+cask "tailscale-app"
 cask "textbuddy"
 cask "tuple"
 cask "visual-studio-code"
@@ -209,7 +210,6 @@ mas "Logic Pro", id: 634148309
 mas "Magnet", id: 441258766
 mas "Motion", id: 434290957
 mas "Soulver 2", id: 413965349
-mas "Tailscale", id: 1475387142
 # Team communication and collaboration software
 vscode "craigmaslowski.erb"
 vscode "docker.docker"
