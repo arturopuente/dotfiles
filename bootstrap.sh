@@ -67,4 +67,7 @@ fi
 [ -f "$HOME/.ruby-version" ] || echo "4.0.9" > "$HOME/.ruby-version"
 
 echo
-echo "Done. Next: Doom Emacs setup is in README.org; SSH/AWS/kube creds are not in this repo."
+echo "Done (log out/in for keyboard + trackpad). Next: Doom Emacs setup is in README.org; SSH/AWS/kube creds are not in this repo."
+
+# 7. macOS settings ----------------------------------------------------------
+bash "$DOTFILES/macos.sh"
