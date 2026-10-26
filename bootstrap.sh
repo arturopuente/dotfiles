@@ -66,8 +66,8 @@ fi
 [ -d "$HOME/.rubies/ruby-4.0.9" ] || ruby-install --no-reinstall ruby 4.0.9
 [ -f "$HOME/.ruby-version" ] || echo "4.0.9" > "$HOME/.ruby-version"
 
-echo
-echo "Done (log out/in for keyboard + trackpad). Next: Doom Emacs setup is in README.org; SSH/AWS/kube creds are not in this repo."
-
 # 7. macOS settings ----------------------------------------------------------
 bash "$DOTFILES/macos.sh"
+
+echo
+echo "Done (log out/in for keyboard + trackpad). Next: Doom Emacs setup is in README.org; SSH/AWS/kube creds are not in this repo."
