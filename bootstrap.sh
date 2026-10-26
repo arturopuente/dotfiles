@@ -20,14 +20,33 @@ fi
 # 3. Packages ---------------------------------------------------------------
 brew bundle --file="$DOTFILES/Brewfile" || echo "!! Some Brewfile entries failed; see above."
 
-# Licensed fonts live in iCloud Drive, not this repo
-FONTS_ZIP="$HOME/Library/Mobile Documents/com~apple~CloudDocs/mac-setup/fonts.zip"
-if [ -e "$FONTS_ZIP" ] || brctl download "$FONTS_ZIP" 2>/dev/null; then
-  for _ in $(seq 30); do unzip -tq "$FONTS_ZIP" >/dev/null 2>&1 && break; sleep 2; done
-  unzip -oq "$FONTS_ZIP" -d "$HOME/Library/Fonts" && echo "installed fonts from iCloud" || echo "!! fonts.zip not ready yet; re-run bootstrap once iCloud finishes syncing."
-else
-  echo "!! $FONTS_ZIP not found; sign in to iCloud Drive or copy fonts manually."
+# Private files (licensed fonts, app data) live in iCloud Drive, not this repo.
+ICLOUD_SETUP="$HOME/Library/Mobile Documents/com~apple~CloudDocs/mac-setup"
+
+# Unzip an iCloud zip into a directory, downloading it from iCloud first if needed.
+icloud_unzip() {
+  local zip="$ICLOUD_SETUP/$1" dest="$2"
+  if [ -e "$zip" ] || brctl download "$zip" 2>/dev/null; then
+    for _ in $(seq 30); do unzip -tq "$zip" >/dev/null 2>&1 && break; sleep 2; done
+    mkdir -p "$dest"
+    unzip -oq "$zip" -d "$dest" && echo "restored $1 from iCloud" && return 0
+    echo "!! $1 not ready yet; re-run bootstrap once iCloud finishes syncing."
+  else
+    echo "!! $zip not found; sign in to iCloud Drive or copy it manually."
+  fi
+  return 1
+}
+
+icloud_unzip fonts.zip "$HOME/Library/Fonts" || true
+
+# FluidVoice: settings + custom vocabulary + history. Models re-download on first launch.
+FV_TMP=$(mktemp -d)
+if ! pgrep -xq FluidVoice && icloud_unzip fluidvoice.zip "$FV_TMP"; then
+  defaults import com.FluidApp.app "$FV_TMP/com.FluidApp.app.plist"
+  mkdir -p "$HOME/Library/Application Support/FluidVoice"
+  cp -n "$FV_TMP"/FluidVoice/* "$HOME/Library/Application Support/FluidVoice/" 2>/dev/null || true
 fi
+rm -rf "$FV_TMP"
 
 # brew doesn't put Emacs.app in /Applications on its own
 EMACS_APP=/opt/homebrew/opt/emacs-plus@31/Emacs.app
