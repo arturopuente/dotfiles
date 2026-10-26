@@ -176,6 +176,7 @@ brew "teamookla/speedtest/speedtest", trusted: true
 brew "mas"
 # Offline voice-to-text dictation app with AI enhancement
 cask "1password"
+cask "affinity"
 cask "airflow"
 cask "alfred"
 cask "claude"
@@ -188,6 +189,7 @@ cask "google-chrome"
 cask "iina"
 cask "iterm2"
 cask "keyboard-maestro"
+cask "meetingbar"
 cask "monitorcontrol"
 cask "moonlight"
 cask "netnewswire"
@@ -205,7 +207,6 @@ mas "Final Cut Pro", id: 424389933
 mas "Keynote", id: 409183694
 mas "Logic Pro", id: 634148309
 mas "Magnet", id: 441258766
-mas "MeetingBar", id: 1532419400
 mas "Motion", id: 434290957
 mas "Soulver 2", id: 413965349
 mas "Tailscale", id: 1475387142
