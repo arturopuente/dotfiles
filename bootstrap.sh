@@ -50,6 +50,7 @@ link .config/doom                .config/doom
 link .config/zed/settings.json   .config/zed/settings.json
 link .config/helix/config.toml   .config/helix/config.toml
 link .config/git/ignore          .config/git/ignore
+link .config/ghostty/config      "Library/Application Support/com.mitchellh.ghostty/config"
 
 # 5. fish as login shell ----------------------------------------------------
 FISH=/opt/homebrew/bin/fish

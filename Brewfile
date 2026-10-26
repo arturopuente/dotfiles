@@ -173,17 +173,42 @@ brew "arturopuente/tap/var"
 brew "d12frosted/emacs-plus/emacs-plus@31"
 # Ookla Speedtest
 brew "teamookla/speedtest/speedtest", trusted: true
+brew "mas"
 # Offline voice-to-text dictation app with AI enhancement
+cask "1password"
+cask "airflow"
+cask "alfred"
+cask "claude"
+cask "firefox"
 cask "fluidvoice"
 cask "font-atkinson-hyperlegible"
 cask "font-symbols-only-nerd-font"
-# Menu bar manager
-# Tool to control external monitor brightness & volume
+cask "ghostty"
+cask "google-chrome"
+cask "iina"
+cask "iterm2"
+cask "keyboard-maestro"
 cask "monitorcontrol"
-# GameStream client
 cask "moonlight"
-# Replacement for Docker Desktop
+cask "netnewswire"
 cask "orbstack"
+cask "slack"
+cask "spotify"
+cask "sublime-text"
+cask "textbuddy"
+cask "tuple"
+cask "visual-studio-code"
+mas "1Password for Safari", id: 1569813296
+mas "Compressor", id: 424390742
+mas "DaisyDisk", id: 411643860
+mas "Final Cut Pro", id: 424389933
+mas "Keynote", id: 409183694
+mas "Logic Pro", id: 634148309
+mas "Magnet", id: 441258766
+mas "MeetingBar", id: 1532419400
+mas "Motion", id: 434290957
+mas "Soulver 2", id: 413965349
+mas "Tailscale", id: 1475387142
 # Team communication and collaboration software
 vscode "craigmaslowski.erb"
 vscode "docker.docker"
