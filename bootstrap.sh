@@ -48,6 +48,13 @@ if ! pgrep -xq FluidVoice && icloud_unzip fluidvoice.zip "$FV_TMP"; then
 fi
 rm -rf "$FV_TMP"
 
+# Alfred: preferences bundle (workflows, hotkeys, themes) + Powerpack license.
+# Clipboard history is deliberately not transferred.
+ALFRED_DIR="$HOME/Library/Application Support/Alfred"
+if ! pgrep -xq Alfred && [ ! -d "$ALFRED_DIR/Alfred.alfredpreferences" ]; then
+  icloud_unzip alfred.zip "$ALFRED_DIR" || true
+fi
+
 # brew doesn't put Emacs.app in /Applications on its own
 EMACS_APP=/opt/homebrew/opt/emacs-plus@31/Emacs.app
 [ -d "$EMACS_APP" ] && [ ! -e /Applications/Emacs.app ] && ln -s "$EMACS_APP" /Applications/Emacs.app || true
