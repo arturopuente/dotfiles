@@ -1,22 +1,20 @@
-[user]
-  name = Arturo Puente
-  email = arturopuentevc@gmail.com
-
-[github]
-  user = arturopuente
-
-[diff]
-  algorithm = patience
-
 [alias]
-  lg = log --color --graph --pretty=format:'%Cred%h%Creset%C(yellow)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset' --abbrev-commit
-
+	lg = log --color --graph --pretty=format:'%Cred%h%Creset%C(red)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset' --abbrev-commit
+	graph = log --graph --all --format='%h %s%n        (%an, %ar)%d' --abbrev-commit
+[user]
+	email = arturopuentevc@gmail.com
+	name = Arturo Puente
+[github]
+	user = arturopuente
+[diff]
+	algorithm = patience
 [push]
-  autoSetupRemote = true
-  autoSetupRemote = true
-
+	autoSetupRemote = true
 [pull]
-  rebase = true
-
+	rebase = true
 [merge]
-  conflictstyle = diff3
+	conflictstyle = zdiff3
+[core]
+	pager = diff-so-fancy | less --tabs=4 -RF
+[interactive]
+	diffFilter = diff-so-fancy --patch

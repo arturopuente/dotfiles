@@ -1,0 +1,16 @@
+[editor]
+# Sync clipboard with system clipboard
+default-yank-register = "+"
+
+[keys.normal]
+# I didn't feel like learning a different way
+# to go to the beginning/end of a line so
+# I remapped 0 and $
+"0" = "goto_first_nonwhitespace"
+"$" = "goto_line_end"
+
+[keys.normal.space]
+# I write a lot of text so I need to constantly reflow,
+# and missed vim's `gq` shortcut
+l = ":reflow"
+

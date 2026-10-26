@@ -19,7 +19,7 @@ command -v brew >/dev/null || \
 
 brew install git ripgrep fd chruby chruby-fish multimarkdown
 brew tap d12frosted/emacs-plus
-brew install emacs-plus@31 --with-native-comp
+brew install emacs-plus@31
 # Monaco ships with macOS; on Linux install Ubuntu Mono instead.
 
 # 2. Dotfiles ---------------------------------------------------------------

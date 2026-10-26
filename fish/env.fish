@@ -1,33 +1,16 @@
 set fish_greeting
 set fish_color_cwd "bbbbbb"
 
-# Local Bin
-set PATH "/usr/local/bin" $PATH
-set PATH "/opt/homebrew/bin" $PATH
-set PATH "/Users/arturo/.local/bin" $PATH
-set PATH "/Users/arturo/.emacs.d/bin" $PATH
-set PATH "/Users/arturo/.yarn/bin" $PATH
-set EDITOR vim
+# Paths. -g keeps these in config instead of the universal fish_user_paths,
+# so a fresh machine gets the same PATH from this file alone.
+fish_add_path -g /opt/homebrew/bin /opt/homebrew/sbin
+fish_add_path -g $HOME/.local/bin $HOME/.cargo/bin
+fish_add_path -g $HOME/.config/emacs/bin
 
-# chruby config
-# source /usr/local/share/chruby/chruby.fish
-# source /usr/local/share/chruby/auto.fish
-# the paths at /usr/local seem to the default for intel-based systems
-# using the new apple silicon paths below
-set CHRUBY_ROOT "/opt/homebrew/Cellar/chruby/0.3.9" 
+set -gx EDITOR vim
 
-# For compilers to find zlib and sqlite you may need to set:
-# export LDFLAGS="$LDFLAGS -L/usr/local/opt/zlib/lib"
-# export LDFLAGS="$LDFLAGS -L/usr/local/opt/sqlite/lib"
-# export CPPFLAGS="$CPPFLAGS -I/usr/local/opt/zlib/include"
-# export CPPFLAGS="$CPPFLAGS -I/usr/local/opt/sqlite/include"
-# For pkg-config to find zlib and sqlite you may need to set:
-# export PKG_CONFIG_PATH="$PKG_CONFIG_PATH /usr/local/opt/zlib/lib/pkgconfig"
-# export PKG_CONFIG_PATH="$PKG_CONFIG_PATH /usr/local/opt/sqlite/lib/pkgconfig"
-# export LC_ALL='en_US.UTF-8'
-# export LANG='en_US.UTF-8'
-# export LDFLAGS="-L/opt/homebrew/lib -L/opt/homebrew/opt/openssl/lib"
+# chruby + auto-switching come from chruby-fish (brew) via vendor_conf.d
 
-set PYENV_ROOT $HOME/.pyenv
-set -x PATH $PYENV_ROOT/shims $PYENV_ROOT/bin $PATH
-pyenv rehash
+# pyenv
+set -gx PYENV_ROOT $HOME/.pyenv
+command -q pyenv; and pyenv init - fish | source
