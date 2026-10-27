@@ -60,6 +60,10 @@ defaults write com.apple.finder NewWindowTarget -string PfHm            # new wi
 defaults write com.apple.finder ShowExternalHardDrivesOnDesktop -bool true
 defaults write com.apple.finder ShowHardDrivesOnDesktop -bool false
 
+# Handoff / Universal Clipboard (needs same Apple ID + Bluetooth on) ---------
+defaults -currentHost write com.apple.coreservices.useractivityd ActivityAdvertisingAllowed -bool true
+defaults -currentHost write com.apple.coreservices.useractivityd ActivityReceivingAllowed -bool true
+
 # Window manager -------------------------------------------------------------
 defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -bool false
 defaults write com.apple.WindowManager EnableTiledWindowMargins -bool false
