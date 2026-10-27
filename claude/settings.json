@@ -1,0 +1,11 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "tui": "default",
+  "theme": "light",
+  "autoCompactEnabled": false,
+  "copyOnSelect": false
+}

@@ -94,6 +94,7 @@ link .config/helix/config.toml   .config/helix/config.toml
 link .config/git/ignore          .config/git/ignore
 link .config/ghostty/config      "Library/Application Support/com.mitchellh.ghostty/config"
 link vscode/settings.json        "Library/Application Support/Code/User/settings.json"
+link claude/settings.json        .claude/settings.json
 
 # 5. fish as login shell ----------------------------------------------------
 FISH=/opt/homebrew/bin/fish
