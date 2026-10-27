@@ -71,6 +71,11 @@ if ! pgrep -xq Alfred && [ ! -d "$ALFRED_DIR/Alfred.alfredpreferences" ]; then
   icloud_unzip alfred.zip "$ALFRED_DIR" || true
 fi
 
+# gv is my own crate (not the unrelated "gv" on crates.io), so build it from source
+GV_DIR="$HOME/dev/arturo/gv"
+[ -d "$GV_DIR" ] || git clone --depth 1 https://github.com/arturopuente/gv.git "$GV_DIR"
+command -v cargo >/dev/null && cargo install --locked --path "$GV_DIR" || echo "!! gv build failed; run: cargo install --path $GV_DIR"
+
 # brew doesn't put Emacs.app in /Applications on its own
 EMACS_APP=/opt/homebrew/opt/emacs-plus@31/Emacs.app
 [ -d "$EMACS_APP" ] && [ ! -e /Applications/Emacs.app ] && ln -s "$EMACS_APP" /Applications/Emacs.app || true
