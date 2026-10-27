@@ -48,6 +48,22 @@ if ! pgrep -xq FluidVoice && icloud_unzip fluidvoice.zip "$FV_TMP"; then
 fi
 rm -rf "$FV_TMP"
 
+# iTerm2 + Magnet: exported preference plists. Import before the apps first run.
+PREFS_TMP=$(mktemp -d)
+if icloud_unzip app-prefs.zip "$PREFS_TMP"; then
+  for plist in "$PREFS_TMP"/*.plist; do
+    domain=$(basename "$plist" .plist)
+    case "$domain" in
+      com.googlecode.iterm2) app=iTerm2 ;;
+      com.crowdcafe.windowmagnet) app=Magnet ;;
+      *) app="" ;;
+    esac
+    if [ -n "$app" ] && pgrep -xq "$app"; then echo "!! $app is running; skipped its settings"; continue; fi
+    defaults import "$domain" "$plist" && echo "imported $domain"
+  done
+fi
+rm -rf "$PREFS_TMP"
+
 # Alfred: preferences bundle (workflows, hotkeys, themes) + Powerpack license.
 # Clipboard history is deliberately not transferred.
 ALFRED_DIR="$HOME/Library/Application Support/Alfred"
@@ -77,6 +93,7 @@ link .config/zed/settings.json   .config/zed/settings.json
 link .config/helix/config.toml   .config/helix/config.toml
 link .config/git/ignore          .config/git/ignore
 link .config/ghostty/config      "Library/Application Support/com.mitchellh.ghostty/config"
+link vscode/settings.json        "Library/Application Support/Code/User/settings.json"
 
 # 5. fish as login shell ----------------------------------------------------
 FISH=/opt/homebrew/bin/fish
