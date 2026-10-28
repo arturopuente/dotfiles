@@ -20,10 +20,20 @@
 ;;
 ;;; UI
 
-;; The old config used Monaco 190 (1/10 pt) on macOS, Ubuntu Mono 150 elsewhere.
+;; Same font as Ghostty (.config/ghostty/config) on macOS.
 (setq doom-font (if (featurep :system 'macos)
-                    (font-spec :family "Monaco" :size 19)
+                    (font-spec :family "Berkeley Mono" :size 18)
                   (font-spec :family "Ubuntu Mono" :size 15)))
+
+;; Claude Code marks tool calls with ⏺ (U+23FA) and its mode line with ⏵.
+;; Berkeley Mono has none of the U+23E9-U+23FA media symbols, so Emacs falls
+;; back to Apple Color Emoji and draws emoji; Ghostty draws them as text. STIX Two Math
+;; ships with macOS and has text versions. Doom rebuilds the fontset whenever
+;; the font changes, hence the hook.
+(when (featurep :system 'macos)
+  (add-hook! 'after-setting-font-hook
+    (defun +ui-text-media-symbols-h ()
+      (set-fontset-font t '(#x23e9 . #x23fa) "STIX Two Math"))))
 
 (setq doom-theme 'modus-operandi)
 
