@@ -64,11 +64,13 @@
   "Non-nil shows one line per session instead of two."
   :type 'boolean)
 
-(defcustom switchboard-notify '(waiting ready error)
-  "Statuses that raise a macOS notification, unless you're watching the session."
+(defcustom switchboard-notify '(waiting ready error exited)
+  "Statuses that raise a macOS notification, unless you're watching the session.
+`exited' only counts a crash or an error exit, not quitting it yourself."
   :type '(set (const :tag "Needs you" waiting)
               (const :tag "Finished its turn" ready)
-              (const :tag "Errored" error)))
+              (const :tag "Errored" error)
+              (const :tag "Exited unexpectedly" exited)))
 
 (defconst switchboard--hook-script
   (expand-file-name "switchboard-hook.sh"
@@ -170,7 +172,8 @@ can only post it."
     (unless (and (switchboard--watching-p s) (eq (frame-focus-state) t))
       (let ((title (switchboard--title s))
             (subtitle (pcase status
-                        ('waiting "Needs you") ('ready "Finished") ('error "Errored")))
+                        ('waiting "Needs you") ('ready "Finished") ('error "Errored")
+                        ('exited "Exited")))
             (body (or (switchboard-session-detail s) (switchboard--project s))))
         (cond
          ((executable-find "terminal-notifier")
@@ -657,9 +660,16 @@ Called by switchboard-hook.sh through emacsclient."
                   (memq status '(ready stopped error)))
              (switchboard--set s 'working))))))
 
-(defun switchboard--on-exit (buf _event)
+(defun switchboard--on-exit (buf event)
+  ;; Killing the buffer (x) doesn't get here, ghostel only calls this for
+  ;; a live one; a clean exit is /exit or Ctrl-D, so only a failure notifies.
   (when-let* ((s (buffer-local-value 'switchboard--session buf)))
-    (switchboard--set s 'exited))
+    (let ((switchboard-notify (if (string-prefix-p "finished" event)
+                                  (remq 'exited switchboard-notify)
+                                switchboard-notify)))
+      (unless (string-prefix-p "finished" event)
+        (setf (switchboard-session-detail s) (string-trim event)))
+      (switchboard--set s 'exited)))
   ;; A drawer whose shell exited closes its split.
   (when (buffer-local-value 'switchboard--drawer-of buf)
     (dolist (w (get-buffer-window-list buf nil t))
@@ -1707,6 +1717,7 @@ worktree or an unmerged branch is only removed once you confirm it."
   (when (and (buffer-live-p (switchboard-session-buffer s))
              (process-live-p (get-buffer-process (switchboard-session-buffer s))))
     (user-error "%s is still running" (switchboard--title s)))
+  (setf (switchboard-session-detail s) nil)   ; why it exited
   (switchboard--set s 'ready)
   (switchboard--update-git s)        ; it may have moved while nothing ran
   (switchboard--spawn s nil t))

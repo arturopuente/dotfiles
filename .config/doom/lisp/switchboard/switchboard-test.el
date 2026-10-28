@@ -115,6 +115,35 @@ recorded in `switchboard-test--notified'."
     (should (eq (switchboard-session-status s) 'ready))
     (should-not switchboard-test--notified)))
 
+(ert-deftest switchboard-test-crash-notifies ()
+  (switchboard-test--with-session s
+    (let ((buf (generate-new-buffer " *switchboard-test*"))
+          (switchboard-notify '(exited)))
+      (with-current-buffer buf (setq switchboard--session s))
+      (cl-letf (((symbol-function 'switchboard--notify)
+                 (lambda (s status)
+                   (when (memq status switchboard-notify)
+                     (push (cons (switchboard--title s) status) switchboard-test--notified)))))
+        (switchboard--on-exit buf "exited abnormally with code 1\n"))
+      (kill-buffer buf)
+      (should (eq (switchboard-session-status s) 'exited))
+      (should (equal (switchboard-session-detail s) "exited abnormally with code 1"))
+      (should (equal switchboard-test--notified '(("heron" . exited)))))))
+
+(ert-deftest switchboard-test-clean-exit-is-quiet ()
+  (switchboard-test--with-session s
+    (let ((buf (generate-new-buffer " *switchboard-test*"))
+          (switchboard-notify '(exited)))
+      (with-current-buffer buf (setq switchboard--session s))
+      (cl-letf (((symbol-function 'switchboard--notify)
+                 (lambda (s status)
+                   (when (memq status switchboard-notify)
+                     (push (cons (switchboard--title s) status) switchboard-test--notified)))))
+        (switchboard--on-exit buf "finished\n"))
+      (kill-buffer buf)
+      (should (eq (switchboard-session-status s) 'exited))
+      (should-not switchboard-test--notified))))
+
 (ert-deftest switchboard-test-same-status-notifies-once ()
   (switchboard-test--with-session s
     (switchboard-test--hook "PermissionRequest" '((tool_name . "Bash")))
