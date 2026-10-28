@@ -209,12 +209,20 @@ can only post it."
                      "-remove" (switchboard--notification-group s)))))
 
 (defun switchboard--notification-clicked (id)
-  "Open session ID, with the sidebar on its row: a notification was clicked."
+  "Open session ID, with the sidebar on its row: a notification was clicked.
+If it has exited since, offer to resume it."
   (when-let* ((s (switchboard--find id)))
     (select-frame-set-input-focus (window-frame (switchboard--main-window)))
     (switchboard--display-sidebar)
-    (when (buffer-live-p (switchboard-session-buffer s))
-      (switchboard--show s t)))
+    (if (buffer-live-p (switchboard-session-buffer s))
+        (switchboard--show s t)
+      (switchboard--select-row s))
+    (when (eq (switchboard-session-status s) 'exited)
+      ;; Ask once emacsclient's request is done, not from inside it.
+      (run-at-time 0 nil (lambda ()
+                           (when (y-or-n-p (format "%s has exited.  Resume it? "
+                                                   (switchboard--title s)))
+                             (switchboard-resume s))))))
   nil)
 
 
