@@ -379,6 +379,14 @@ name of your own instead."
     (with-current-buffer (switchboard-session-buffer s)
       (rename-buffer (format "*sb:%s*" (switchboard--title s)) t))))
 
+(defun switchboard--update-branch (s)
+  "Re-read S's branch, in case the agent checked out another one."
+  (let ((branch (switchboard--git (switchboard-session-dir s) "branch" "--show-current")))
+    (when (and branch (not (string-empty-p branch))
+               (not (equal branch (switchboard-session-branch s))))
+      (setf (switchboard-session-branch s) branch)
+      (switchboard--save-soon))))
+
 (defun switchboard--finish-turn (s status)
   (setf (switchboard-session-unread s) (not (switchboard--watching-p s)))
   (switchboard--set s status))
@@ -415,6 +423,7 @@ Called by switchboard-hook.sh through emacsclient."
          (switchboard--set s 'waiting))
         ("Stop"
          (setf (switchboard-session-detail s) nil)
+         (switchboard--update-branch s)
          (switchboard--update-tokens s payload)
          (switchboard--finish-turn s 'ready))
         ("StopFailure"
@@ -778,15 +787,21 @@ Claude sessions continue their conversation; Codex resumes its last one."
     (unless switchboard-compact
       (let* ((label (switchboard--label s))
              (label-w (* 1.08 (switchboard--text-width label small)))
+             (text-x (+ name-x label-w 14))
+             (branch (and (switchboard-session-branch s)
+                          (switchboard--clip (concat "⎇ " (switchboard-session-branch s))
+                                             small (* 0.4 (- age-x text-x)))))
+             (branch-w (if branch (+ (switchboard--text-width branch small) 12) 0))
              (text (string-replace "\n" " " (or (switchboard-session-detail s)
                                                 (switchboard-session-task s)
-                                                (and (switchboard-session-branch s)
-                                                     (concat "⎇ " (switchboard-session-branch s)))
                                                 ""))))
         (switchboard--svg-text svg label name-x y2 small color
                                :font-weight "bold" :letter-spacing "0.06em")
-        (switchboard--svg-text svg (switchboard--clip text sub (- width name-x label-w 26))
-                               (+ name-x label-w 14) y2 sub (plist-get pal :dim))))
+        (switchboard--svg-text svg (switchboard--clip text sub (- age-x text-x branch-w))
+                               text-x y2 sub (plist-get pal :dim))
+        (when branch
+          (switchboard--svg-text svg branch age-x y2 small (plist-get pal :dim)
+                                 :text-anchor "end"))))
     (switchboard--image svg)))
 
 (defun switchboard--group-row (title count folded width pal)
