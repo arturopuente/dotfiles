@@ -1287,8 +1287,22 @@ session it maximizes the window instead (`doom/window-maximize-buffer')."
     (switchboard--follow-drawer s)
     (when select (select-window win))
     (switchboard--refit win)
+    (switchboard--select-row s)
     (switchboard--schedule-render)
     win))
+
+(defun switchboard--select-row (s)
+  "Move the list's point to S's row, so the highlight follows what's shown."
+  (when-let* ((buf (get-buffer switchboard--buffer-name)))
+    (with-current-buffer buf
+      (let ((pos (save-excursion
+                   (goto-char (point-min))
+                   (when-let* ((m (text-property-search-forward 'switchboard-session s #'eq)))
+                     (prop-match-beginning m)))))
+        (when pos
+          (goto-char pos)
+          (when-let* ((win (get-buffer-window buf t)))
+            (set-window-point win pos)))))))
 
 (defun switchboard--refit (win)
   "Resize WIN's terminal to WIN and scroll it to the bottom.
@@ -1332,10 +1346,7 @@ the next one in the same window. Anywhere else it is `next-buffer'."
                         order)))
         (if (not list-p)
             (switchboard--show next t)
-          (switchboard-peek next)
-          (goto-char (point-min))
-          (when-let* ((m (text-property-search-forward 'switchboard-session next #'eq)))
-            (goto-char (prop-match-beginning m)))))))))
+          (switchboard-peek next)))))))
 
 (defun switchboard-previous-session (&optional n)
   "Show the Nth previous session in list order; see `switchboard-next-session'."
