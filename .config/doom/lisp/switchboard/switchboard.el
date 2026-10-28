@@ -32,6 +32,8 @@
 (declare-function ghostel-exec "ghostel")
 (declare-function ghostel-paste-string "ghostel")
 (declare-function ghostel-send-key "ghostel")
+(declare-function ghostel--adjust-size "ghostel")
+(declare-function ghostel--anchor-window "ghostel")
 (declare-function magit-status-setup-buffer "magit-status")
 (declare-function evil-set-initial-state "evil-core")
 (defvar ghostel-kill-buffer-on-exit)
@@ -1198,8 +1200,19 @@ session it maximizes the window instead (`doom/window-maximize-buffer')."
     (set-window-buffer win (switchboard-session-buffer s))
     (switchboard--follow-drawer s)
     (when select (select-window win))
+    (switchboard--refit win)
     (switchboard--schedule-render)
     win))
+
+(defun switchboard--refit (win)
+  "Resize WIN's terminal to WIN and scroll it to the bottom.
+Sometimes a terminal ends up taller than its window, cutting off the
+last rows; this puts it right whenever you switch to it."
+  (with-current-buffer (window-buffer win)
+    (when (bound-and-true-p ghostel--term)
+      (redisplay)                       ; settle the header line's height
+      (ghostel--adjust-size win t)
+      (ghostel--anchor-window win t))))
 
 (defun switchboard-open (s)
   "Show session S and select its terminal."
