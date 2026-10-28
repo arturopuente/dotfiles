@@ -540,6 +540,21 @@ doesn't stall Emacs; asked again while it runs, it runs once more."
                                 (switchboard--git-done s proc))))
                  switchboard--git-procs))))))
 
+(defvar switchboard--git-timers (make-hash-table :test 'equal)
+  "Session id to the timer that will refresh its git state.")
+
+(defun switchboard--update-git-soon (s)
+  "Refresh S's git state once its tool calls pause for a couple of seconds.
+A turn can make dozens of edits; this reads git once per burst."
+  (let ((id (switchboard-session-id s)))
+    (when-let* ((timer (gethash id switchboard--git-timers)))
+      (cancel-timer timer))
+    (puthash id (run-at-time 2 nil (lambda ()
+                                     (remhash id switchboard--git-timers)
+                                     (when (memq s switchboard--sessions)
+                                       (switchboard--update-git s))))
+             switchboard--git-timers)))
+
 (defun switchboard--git-done (s proc)
   (let ((output (with-current-buffer (process-buffer proc) (buffer-string))))
     (kill-buffer (process-buffer proc))
@@ -598,6 +613,8 @@ Called by switchboard-hook.sh through emacsclient."
         ((or "PreToolUse" "PostToolUse" "PostToolUseFailure")
          (when (eq (switchboard-session-status s) 'waiting)
            (setf (switchboard-session-detail s) nil))
+         (when (equal event "PostToolUse")
+           (switchboard--update-git-soon s))
          (switchboard--set s 'working))
         ("PermissionRequest"
          (let ((input (alist-get 'tool_input payload)))

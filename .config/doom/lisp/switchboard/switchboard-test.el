@@ -148,6 +148,16 @@ recorded in `switchboard-test--notified'."
       (switchboard-test--refresh s)
       (should (equal (switchboard-session-changes s) '(3 2 1))))))
 
+(ert-deftest switchboard-test-tool-calls-refresh-git-once ()
+  (switchboard-test--with-session s
+    (let ((runs 0))
+      (cl-letf (((symbol-function 'switchboard--update-git) (lambda (_) (cl-incf runs))))
+        (dotimes (_ 5) (switchboard-test--hook "PostToolUse"))
+        (should (= runs 0))                      ; not while edits keep coming
+        (funcall (timer--function (gethash "heron-0001" switchboard--git-timers)))
+        (should (= runs 1))
+        (should-not (gethash "heron-0001" switchboard--git-timers))))))
+
 (ert-deftest switchboard-test-parse-git-handles-binary-files ()
   (should (equal (switchboard--parse-git "sb/heron\n@@\n-\t-\timg.png\n4\t1\ta.el\n@@\n")
                  '("sb/heron" 4 1 0))))
