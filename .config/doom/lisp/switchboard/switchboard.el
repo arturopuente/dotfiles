@@ -1758,16 +1758,48 @@ worktree or an unmerged branch is only removed once you confirm it."
     (set-window-buffer win (switchboard-session-buffer s))
     (select-window win)))
 
+(defun switchboard--slots ()
+  "The session record's slot names, in order, tag slot first."
+  (mapcar #'car (cl-struct-slot-info 'switchboard-session)))
+
+(defun switchboard--migrate-sessions (old-slots)
+  "Rebuild sessions made with OLD-SLOTS in the current record layout.
+A reload that adds or moves a slot leaves running sessions in the old
+layout, which the new accessors would read shifted.  Copy each slot by
+name, and point the terminal and drawer buffers at the new records."
+  (unless (equal old-slots (switchboard--slots))
+    (let ((map nil))
+      (setq switchboard--sessions
+            (mapcar
+             (lambda (s)
+               (let ((new (apply #'switchboard--session-create
+                                 (cl-loop for slot in (cdr old-slots) for i from 1
+                                          when (memq slot (switchboard--slots))
+                                          nconc (list (intern (format ":%s" slot)) (aref s i))))))
+                 (push (cons s new) map)
+                 new))
+             switchboard--sessions))
+      (dolist (buf (buffer-list))
+        (with-current-buffer buf
+          (when-let* ((new (cdr (assq switchboard--session map))))
+            (setq switchboard--session new))
+          (when-let* ((new (cdr (assq switchboard--drawer-of map))))
+            (setq switchboard--drawer-of new))))
+      (message "Switchboard: rebuilt %d session%s for the new layout"
+               (length map) (if (cdr map) "s" "")))))
+
 (defun switchboard-reload ()
   "Load this file again, picking up changes; running sessions carry on.
 A plain `load-file' would miss changes to the list's keys and faces,
 since `defvar-keymap' and `defface' keep existing values."
   (interactive)
-  (let ((file (expand-file-name "switchboard.el" (file-name-directory switchboard--hook-script))))
+  (let ((file (expand-file-name "switchboard.el" (file-name-directory switchboard--hook-script)))
+        (slots (switchboard--slots)))
     (makunbound 'switchboard-list-mode-map)
     (dolist (face (get 'switchboard 'custom-group))
       (when (eq (cadr face) 'custom-face) (put (car face) 'face-defface-spec nil)))
     (load file nil t t)
+    (switchboard--migrate-sessions slots)
     (dolist (face (get 'switchboard 'custom-group))
       (when (eq (cadr face) 'custom-face)
         (face-spec-set (car face) (get (car face) 'face-defface-spec) 'face-defface-spec)))

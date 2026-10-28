@@ -158,6 +158,29 @@ recorded in `switchboard-test--notified'."
         (should (= runs 1))
         (should-not (gethash "heron-0001" switchboard--git-timers))))))
 
+(ert-deftest switchboard-test-migrate-rebuilds-old-records ()
+  (switchboard-test--with-session s
+    ;; Pretend the old layout lacked `detail': a record one slot shorter.
+    (let* ((slots (switchboard--slots))
+           (old-slots (remq 'detail slots))
+           (old (apply #'record 'switchboard-session
+                       (mapcar (lambda (slot)
+                                 (pcase slot ('name "wren") ('status 'waiting) (_ nil)))
+                               (cdr old-slots))))
+           (buf (generate-new-buffer " *switchboard-test*")))
+      (setq switchboard--sessions (list old))
+      (with-current-buffer buf (setq switchboard--session old))
+      (unwind-protect
+          (progn
+            (switchboard--migrate-sessions old-slots)
+            (let ((new (car switchboard--sessions)))
+              (should (= (length new) (length slots)))
+              (should (equal (switchboard-session-name new) "wren"))
+              (should (eq (switchboard-session-status new) 'waiting))
+              (should-not (switchboard-session-detail new))
+              (should (eq (buffer-local-value 'switchboard--session buf) new))))
+        (kill-buffer buf)))))
+
 (ert-deftest switchboard-test-parse-git-handles-binary-files ()
   (should (equal (switchboard--parse-git "sb/heron\n@@\n-\t-\timg.png\n4\t1\ta.el\n@@\n")
                  '("sb/heron" 4 1 0))))
