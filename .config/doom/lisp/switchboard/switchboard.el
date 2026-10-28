@@ -256,8 +256,9 @@ If it has exited since, offer to resume it."
       (when (zerop (apply #'call-process "git" nil t nil args))
         (string-trim (buffer-string))))))
 
-(defun switchboard--add-worktree (root name)
-  "Create (or reuse) a worktree for NAME off ROOT.  Return (DIR . BRANCH)."
+(defun switchboard--add-worktree (root name &optional start)
+  "Create (or reuse) a worktree for NAME off ROOT.  Return (DIR . BRANCH).
+A new branch starts from START, or ROOT's checked-out commit."
   (let* ((repo (file-name-nondirectory (directory-file-name root)))
          (dir (file-name-as-directory
                (expand-file-name (concat repo "/" name) switchboard-worktree-directory)))
@@ -267,7 +268,8 @@ If it has exited since, offer to resume it."
       (let ((args (if (switchboard--git root "rev-parse" "--verify" "--quiet"
                                         (concat "refs/heads/" branch))
                       (list "worktree" "add" dir branch)
-                    (list "worktree" "add" "-b" branch dir))))
+                    (append (list "worktree" "add" "-b" branch dir)
+                            (and start (list start))))))
         (unless (apply #'switchboard--git root args)
           (user-error "git %s failed" (string-join args " ")))))
     (cons dir branch)))
@@ -358,14 +360,15 @@ them: claude would think it is nested, and turns off transcripts.")
 (defun switchboard--start (harness root prompt worktree &optional title dir)
   "Start a HARNESS session in project ROOT, sending PROMPT first.
 With WORKTREE non-nil it gets its own worktree, on a branch named after
-a free handle from `switchboard-names'; otherwise it runs in DIR, or
-ROOT.  Claude titles the session once its first turn ends; TITLE pins a
-name of your own instead."
+a free handle from `switchboard-names', starting from the branch
+WORKTREE names if it's a string; otherwise it runs in DIR, or ROOT.
+Claude titles the session once its first turn ends; TITLE pins a name
+of your own instead."
   (setq title (and title (not (string-blank-p title)) title))
   (pcase-let* ((name (switchboard--free-name))
                (`(,dir . ,branch)
                 (if worktree
-                    (switchboard--add-worktree root name)
+                    (switchboard--add-worktree root name (and (stringp worktree) worktree))
                   (let ((dir (or dir root)))
                     (cons dir (switchboard--git dir "branch" "--show-current")))))
                (s (switchboard--session-create
@@ -382,17 +385,18 @@ name of your own instead."
 ;; options first if you want any, then press the harness.
 
 (defun switchboard--new-scope ()
-  "(ROOT . DIR) for a new session: the row at point's, or this project."
+  "(ROOT DIR BRANCH) for a new session: the row at point's, or this project."
   (let ((here (and (eq (current-buffer) (get-buffer switchboard--buffer-name))
                    (get-text-property (point) 'switchboard-session)))
         (project (and (fboundp 'doom-project-root) (doom-project-root))))
-    (cond (here (cons (switchboard-session-root here) (switchboard-session-dir here)))
+    (cond (here (list (switchboard-session-root here) (switchboard-session-dir here)
+                      (switchboard-session-branch here)))
           (project (list (file-name-as-directory (expand-file-name project)))))))
 
 (defun switchboard--new-description ()
   (let ((scope (transient-scope)))
     (format "New session in %s"
-            (propertize (if scope (abbreviate-file-name (or (cdr scope) (car scope)))
+            (propertize (if scope (abbreviate-file-name (or (nth 1 scope) (car scope)))
                           "a project you pick")
                         'face 'transient-value))))
 
@@ -406,11 +410,12 @@ name of your own instead."
          (root (if other
                    (file-name-as-directory (expand-file-name other))
                  (or (car scope) (switchboard--read-project))))
-         (worktree (transient-arg-value "--worktree" args)))
+         (from (and (not other) (transient-arg-value "--from-branch" args) (nth 2 scope)))
+         (worktree (or from (transient-arg-value "--worktree" args))))
     (when (and worktree (not (switchboard--git root "rev-parse" "--git-dir")))
       (user-error "%s is not a git repository" (abbreviate-file-name root)))
     (switchboard--start harness root (transient-arg-value "--prompt=" args) worktree
-                        (transient-arg-value "--name=" args) (and (not other) (cdr scope)))))
+                        (transient-arg-value "--name=" args) (and (not other) (nth 1 scope)))))
 
 (transient-define-suffix switchboard-new-claude ()
   "Start a Claude Code session."
@@ -427,6 +432,8 @@ name of your own instead."
   "Start a new session, in the project and folder of the row at point."
   [:description switchboard--new-description
    ("-w" "New worktree" "--worktree")
+   ("-b" "New worktree from its branch" "--from-branch"
+    :if (lambda () (nth 2 (transient-scope))))
    ("-n" "Name" "--name=")
    ("-p" "First prompt" "--prompt=")
    ("-P" "Other project" "--project=" :reader switchboard--read-project-option)]
