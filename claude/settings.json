@@ -7,5 +7,6 @@
   "tui": "default",
   "theme": "light",
   "autoCompactEnabled": false,
-  "copyOnSelect": false
+  "copyOnSelect": false,
+  "skipWorkflowUsageWarning": true
 }
