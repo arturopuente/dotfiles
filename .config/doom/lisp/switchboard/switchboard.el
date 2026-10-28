@@ -72,6 +72,11 @@
               (const :tag "Errored" error)
               (const :tag "Exited unexpectedly" exited)))
 
+(defcustom switchboard-remind-after 600
+  "Seconds a session can need you before it notifies again, and again.
+nil notifies once."
+  :type '(choice (const :tag "Only once" nil) integer))
+
 (defconst switchboard--hook-script
   (expand-file-name "switchboard-hook.sh"
                     (file-name-directory (or load-file-name buffer-file-name)))
@@ -154,8 +159,28 @@
     (when (and (memq status '(waiting error)) (not (switchboard--watching-p s)))
       (message "Switchboard: %s %s" (switchboard--title s)
                (if (eq status 'waiting) "needs you" "hit an error")))
-    (switchboard--notify s status))
+    (switchboard--notify s status)
+    (switchboard--schedule-reminder s))
   (switchboard--schedule-render))
+
+(defvar switchboard--reminders (make-hash-table :test 'equal)
+  "Session id to the timer that will remind you it still needs you.")
+
+(defun switchboard--schedule-reminder (s)
+  "While S needs you, notify again every `switchboard-remind-after' seconds."
+  (let ((id (switchboard-session-id s)))
+    (when-let* ((timer (gethash id switchboard--reminders)))
+      (cancel-timer timer)
+      (remhash id switchboard--reminders))
+    (when (and switchboard-remind-after (eq (switchboard-session-status s) 'waiting))
+      (puthash id (run-at-time switchboard-remind-after nil #'switchboard--remind s)
+               switchboard--reminders))))
+
+(defun switchboard--remind (s)
+  (remhash (switchboard-session-id s) switchboard--reminders)
+  (when (and (memq s switchboard--sessions) (eq (switchboard-session-status s) 'waiting))
+    (switchboard--notify s 'waiting t)
+    (switchboard--schedule-reminder s)))
 
 (defun switchboard--watching-p (s)
   "Non-nil if S is in the selected window."
@@ -164,15 +189,18 @@
 (defvar switchboard--notified nil
   "Ids of sessions with a terminal-notifier notification that may still be up.")
 
-(defun switchboard--notify (s status)
+(defun switchboard--notify (s status &optional again)
   "Raise a macOS notification that S moved to STATUS, if you aren't watching it.
+AGAIN says it has been in STATUS a while: a reminder.
 With terminal-notifier, clicking it brings Emacs back on S; osascript
 can only post it."
   (when (memq status switchboard-notify)
     (unless (and (switchboard--watching-p s) (eq (frame-focus-state) t))
       (let ((title (switchboard--title s))
             (subtitle (pcase status
-                        ('waiting "Needs you") ('ready "Finished") ('error "Errored")
+                        ('waiting (if again
+                                      (format "Still needs you, for %s" (switchboard--age s))
+                                    "Needs you")) ('ready "Finished") ('error "Errored")
                         ('exited "Exited")))
             (body (or (switchboard-session-detail s) (switchboard--project s))))
         (cond

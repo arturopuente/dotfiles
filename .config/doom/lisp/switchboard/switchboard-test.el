@@ -21,12 +21,14 @@ recorded in `switchboard-test--notified'."
           (,var (switchboard--session-create :id "heron-0001" :name "heron"
                                              :harness 'claude :root dir :dir dir))
           (switchboard--sessions (list ,var))
-          (switchboard-test--notified nil))
+          (switchboard-test--notified nil)
+          (switchboard-remind-after nil))
      (cl-letf (((symbol-function 'switchboard--schedule-render) #'ignore)
                ((symbol-function 'switchboard--save-soon) #'ignore)
                ((symbol-function 'switchboard--notify)
-                (lambda (s status)
-                  (push (cons (switchboard--title s) status) switchboard-test--notified)))
+                (lambda (s status &optional again)
+                  (push (cons (switchboard--title s) (if again (list status 'again) status))
+                        switchboard-test--notified)))
                ((symbol-function 'message) #'ignore))
        (unwind-protect (progn ,@body)
          (delete-directory dir t)))))
@@ -121,7 +123,7 @@ recorded in `switchboard-test--notified'."
           (switchboard-notify '(exited)))
       (with-current-buffer buf (setq switchboard--session s))
       (cl-letf (((symbol-function 'switchboard--notify)
-                 (lambda (s status)
+                 (lambda (s status &rest _)
                    (when (memq status switchboard-notify)
                      (push (cons (switchboard--title s) status) switchboard-test--notified)))))
         (switchboard--on-exit buf "exited abnormally with code 1\n"))
@@ -136,13 +138,25 @@ recorded in `switchboard-test--notified'."
           (switchboard-notify '(exited)))
       (with-current-buffer buf (setq switchboard--session s))
       (cl-letf (((symbol-function 'switchboard--notify)
-                 (lambda (s status)
+                 (lambda (s status &rest _)
                    (when (memq status switchboard-notify)
                      (push (cons (switchboard--title s) status) switchboard-test--notified)))))
         (switchboard--on-exit buf "finished\n"))
       (kill-buffer buf)
       (should (eq (switchboard-session-status s) 'exited))
       (should-not switchboard-test--notified))))
+
+(ert-deftest switchboard-test-waiting-reminds-until-answered ()
+  (switchboard-test--with-session s
+    (let ((switchboard-remind-after 600))
+      (switchboard-test--hook "PermissionRequest" '((tool_name . "Bash")))
+      (let ((timer (gethash "heron-0001" switchboard--reminders)))
+        (should timer)
+        (funcall (timer--function timer) s))          ; ten minutes pass
+      (should (equal (car switchboard-test--notified) '("heron" waiting again)))
+      (should (gethash "heron-0001" switchboard--reminders))   ; and again later
+      (switchboard-test--hook "PostToolUse")         ; you answered
+      (should-not (gethash "heron-0001" switchboard--reminders)))))
 
 (ert-deftest switchboard-test-same-status-notifies-once ()
   (switchboard-test--with-session s
