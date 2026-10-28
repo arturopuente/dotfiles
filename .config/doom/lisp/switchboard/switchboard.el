@@ -160,19 +160,47 @@
   (eq (window-buffer (selected-window)) (switchboard-session-buffer s)))
 
 (defun switchboard--notify (s status)
-  "Raise a macOS notification that S moved to STATUS, if you aren't watching it."
-  (when (and (memq status switchboard-notify)
-             (not (and (switchboard--watching-p s) (eq (frame-focus-state) t)))
-             (executable-find "osascript"))
-    ;; Text goes in as arguments, so quotes in it need no escaping.
-    (start-process "switchboard-notify" nil "osascript"
-                   "-e" "on run argv"
-                   "-e" "display notification (item 3 of argv) with title (item 1 of argv) subtitle (item 2 of argv)"
-                   "-e" "end run"
-                   (switchboard--title s)
-                   (pcase status
-                     ('waiting "Needs you") ('ready "Finished") ('error "Errored"))
-                   (or (switchboard-session-detail s) (switchboard--project s)))))
+  "Raise a macOS notification that S moved to STATUS, if you aren't watching it.
+With terminal-notifier, clicking it brings Emacs back on S; osascript
+can only post it."
+  (when (memq status switchboard-notify)
+    (unless (and (switchboard--watching-p s) (eq (frame-focus-state) t))
+      (let ((title (switchboard--title s))
+            (subtitle (pcase status
+                        ('waiting "Needs you") ('ready "Finished") ('error "Errored")))
+            (body (or (switchboard-session-detail s) (switchboard--project s))))
+        (cond
+         ((executable-find "terminal-notifier")
+          ;; A leading [ or - would be read as an option, so escape it.
+          (start-process "switchboard-notify" nil "terminal-notifier"
+                         "-title" title "-subtitle" subtitle
+                         "-message" (replace-regexp-in-string "\\`[[-]" "\\\\\\&" body)
+                         ;; One per session: a newer one replaces the last.
+                         "-group" (concat "switchboard-" (switchboard-session-id s))
+                         "-activate" "org.gnu.Emacs"
+                         "-execute" (mapconcat #'shell-quote-argument
+                                               (list (or (executable-find "emacsclient") "emacsclient")
+                                                     "-s" (expand-file-name server-name server-socket-dir)
+                                                     "-n" "--eval"
+                                                     (format "(switchboard--notification-clicked %S)"
+                                                             (switchboard-session-id s)))
+                                               " ")))
+         ((executable-find "osascript")
+          ;; Text goes in as arguments, so quotes in it need no escaping.
+          (start-process "switchboard-notify" nil "osascript"
+                         "-e" "on run argv"
+                         "-e" "display notification (item 3 of argv) with title (item 1 of argv) subtitle (item 2 of argv)"
+                         "-e" "end run"
+                         title subtitle body)))))))
+
+(defun switchboard--notification-clicked (id)
+  "Open session ID, with the sidebar on its row: a notification was clicked."
+  (when-let* ((s (switchboard--find id)))
+    (select-frame-set-input-focus (window-frame (switchboard--main-window)))
+    (switchboard--display-sidebar)
+    (when (buffer-live-p (switchboard-session-buffer s))
+      (switchboard--show s t)))
+  nil)
 
 
 ;;; Starting sessions

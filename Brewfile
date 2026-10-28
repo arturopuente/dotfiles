@@ -155,6 +155,8 @@ brew "shared-mime-info"
 # Modern and pretty fancy file manager for the terminal
 # User interface to the TELNET protocol
 brew "telnet"
+# Send macOS notifications from the command-line
+brew "terminal-notifier"
 # Terminal multiplexer
 brew "tmux"
 # Validating, recursive, caching DNS resolver
