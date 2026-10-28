@@ -989,6 +989,7 @@ Claude sessions continue their conversation; Codex resumes its last one."
   "!" #'switchboard-shell
   "z" #'switchboard-zoom
   "g" #'switchboard-refresh
+  "?" #'switchboard-help
   "q" #'quit-window
   "1" #'switchboard-jump "2" #'switchboard-jump "3" #'switchboard-jump
   "4" #'switchboard-jump "5" #'switchboard-jump "6" #'switchboard-jump
@@ -1456,6 +1457,50 @@ since `defvar-keymap' and `defface' keep existing values."
   "Redraw the list."
   (interactive)
   (switchboard--render))
+
+(defconst switchboard--help
+  '((switchboard-open "Open the session at point")
+    (switchboard-peek "Show it without leaving the list")
+    (switchboard-jump "Open the Nth listed session")
+    (switchboard-next-line "Next row")
+    (switchboard-previous-line "Previous row")
+    (switchboard-next-attention "Open the next session that needs you")
+    (switchboard-new "Start a new session")
+    (switchboard-rename "Rename the session at point")
+    (switchboard-resume "Resume an exited session")
+    (switchboard-kill "Kill it (worktree and branch are kept)")
+    (switchboard-mark "Toggle its broadcast mark")
+    (switchboard-unmark-all "Clear every broadcast mark")
+    (switchboard-broadcast "Send text to every marked session")
+    (switchboard-split "Show it in a split beside the main window")
+    (switchboard-shell "Toggle a shell in its worktree")
+    (switchboard-zoom "Give the whole area to the agent or its shell")
+    (switchboard-magit "Magit status for its worktree")
+    (switchboard-filter "Filter the list; empty clears it")
+    (switchboard-fold "Fold or unfold the group at point")
+    (switchboard-toggle-grouping "Group by project or by status")
+    (switchboard-toggle-compact "One- or two-line rows")
+    (switchboard-refresh "Redraw")
+    (switchboard-help "This help")
+    (quit-window "Hide the list"))
+  "The list's commands, in the order `switchboard-help' shows them.")
+
+(defun switchboard-help ()
+  "List the session list's keys."
+  (interactive)
+  (help-setup-xref (list #'switchboard-help) (called-interactively-p 'interactive))
+  (with-help-window (help-buffer)
+    (princ "Switchboard keys\n\n")
+    (pcase-dolist (`(,cmd ,desc) switchboard--help)
+      (when-let* ((keys (sort (seq-remove (lambda (k) (mouse-event-p (aref k 0)))
+                                          (where-is-internal cmd (list switchboard-list-mode-map)))
+                              :key #'key-description)))
+        (princ (format "  %-8s %s\n"
+                       (if (cdr keys)   ; the digits
+                           (concat (key-description (car keys)) "-"
+                                   (key-description (car (last keys))))
+                         (key-description (car keys)))
+                       desc))))))
 
 (provide 'switchboard)
 ;;; switchboard.el ends here
