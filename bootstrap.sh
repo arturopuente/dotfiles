@@ -75,6 +75,14 @@ fi
 EMACS_APP=/opt/homebrew/opt/emacs-plus@31/Emacs.app
 [ -d "$EMACS_APP" ] && [ ! -e /Applications/Emacs.app ] && ln -s "$EMACS_APP" /Applications/Emacs.app || true
 
+# Switchboard's notifications: terminal-notifier stays silent until macOS has
+# asked to allow it, and only launching it as an app brings up that prompt.
+NOTIFIER_APP=/opt/homebrew/opt/terminal-notifier/terminal-notifier.app
+if [ -d "$NOTIFIER_APP" ] && ! terminal-notifier -diagnose 2>/dev/null | grep -q 'authorization *authorized'; then
+  open -W -a "$NOTIFIER_APP" --args -title Switchboard -message "Notifications are on" || true
+  echo "Allow terminal-notifier's notifications if macOS asks."
+fi
+
 # 4. Symlinks ---------------------------------------------------------------
 link() {
   local src="$DOTFILES/$1" dest="$HOME/$2"
