@@ -28,6 +28,7 @@
 (require 'server)
 (require 'text-property-search)
 (require 'svg)
+(require 'transient)
 
 (declare-function ghostel-exec "ghostel")
 (declare-function ghostel-paste-string "ghostel")
@@ -62,6 +63,12 @@
 (defcustom switchboard-compact nil
   "Non-nil shows one line per session instead of two."
   :type 'boolean)
+
+(defcustom switchboard-notify '(waiting ready error)
+  "Statuses that raise a macOS notification, unless you're watching the session."
+  :type '(set (const :tag "Needs you" waiting)
+              (const :tag "Finished its turn" ready)
+              (const :tag "Errored" error)))
 
 (defconst switchboard--hook-script
   (expand-file-name "switchboard-hook.sh"
@@ -144,12 +151,28 @@
           (switchboard-session-changed s) (float-time))
     (when (and (memq status '(waiting error)) (not (switchboard--watching-p s)))
       (message "Switchboard: %s %s" (switchboard--title s)
-               (if (eq status 'waiting) "needs you" "hit an error"))))
+               (if (eq status 'waiting) "needs you" "hit an error")))
+    (switchboard--notify s status))
   (switchboard--schedule-render))
 
 (defun switchboard--watching-p (s)
   "Non-nil if S is in the selected window."
   (eq (window-buffer (selected-window)) (switchboard-session-buffer s)))
+
+(defun switchboard--notify (s status)
+  "Raise a macOS notification that S moved to STATUS, if you aren't watching it."
+  (when (and (memq status switchboard-notify)
+             (not (and (switchboard--watching-p s) (eq (frame-focus-state) t)))
+             (executable-find "osascript"))
+    ;; Text goes in as arguments, so quotes in it need no escaping.
+    (start-process "switchboard-notify" nil "osascript"
+                   "-e" "on run argv"
+                   "-e" "display notification (item 3 of argv) with title (item 1 of argv) subtitle (item 2 of argv)"
+                   "-e" "end run"
+                   (switchboard--title s)
+                   (pcase status
+                     ('waiting "Needs you") ('ready "Finished") ('error "Errored"))
+                   (or (switchboard-session-detail s) (switchboard--project s)))))
 
 
 ;;; Starting sessions
@@ -876,10 +899,10 @@ Claude sessions continue their conversation; Codex resumes its last one."
           (switchboard--svg-text svg text (+ x 5) (+ (/ h 2.0) (* 0.36 size)) size
                                  (plist-get pal :paper) :font-weight "bold")
           (setq x (+ x w 6)))))
-    (when switchboard--filter
-      (switchboard--svg-text svg (concat "/" switchboard--filter) (- width 8)
-                             (+ (/ h 2.0) (* 0.35 size)) size (plist-get pal :dim)
-                             :text-anchor "end"))
+    (let ((hint (if switchboard--filter (concat "/" switchboard--filter) "? help")))
+      (when (or switchboard--filter (<= (+ x (switchboard--text-width hint size) 8) width))
+        (switchboard--svg-text svg hint (- width 8) (+ (/ h 2.0) (* 0.35 size)) size
+                               (plist-get pal :dim) :text-anchor "end")))
     (switchboard--image svg)))
 
 (defun switchboard--terminal-header (s width pal)
@@ -1019,10 +1042,8 @@ Claude sessions continue their conversation; Codex resumes its last one."
   (setq-local truncate-lines t
               cursor-type nil
               line-spacing 0
-              mode-line-format '(" *switchboard*  "
-                                 (:eval (format "(%s%s)" switchboard--group
-                                                (if switchboard-compact " compact" "")))
-                                 "  ? help")
+              ;; None, so its bottom lines up with the terminal's, which has none.
+              mode-line-format nil
               header-line-format '(:eval switchboard--header-image))
   (face-remap-add-relative 'default 'switchboard-sidebar)
   (face-remap-add-relative 'header-line 'switchboard-sidebar '(:box nil :underline nil))
