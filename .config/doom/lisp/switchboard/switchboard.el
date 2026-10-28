@@ -121,7 +121,7 @@
 (cl-defstruct (switchboard-session (:constructor switchboard--session-create)
                                    (:copier nil))
   id name title named harness root dir branch buffer
-  (status 'ready) unread marked task detail tokens resume-id transcript
+  (status 'ready) unread marked task detail tokens resume-id transcript changes
   (changed (float-time)) (turn-start (float-time)))
 
 (defvar switchboard--sessions nil
@@ -503,13 +503,30 @@ name of your own instead."
     (with-current-buffer (switchboard-session-buffer s)
       (rename-buffer (format "*sb:%s*" (switchboard--title s)) t))))
 
-(defun switchboard--update-branch (s)
-  "Re-read S's branch, in case the agent checked out another one."
-  (let ((branch (switchboard--git (switchboard-session-dir s) "branch" "--show-current")))
+(defun switchboard--update-git (s)
+  "Re-read S's branch, in case the agent checked out another one, and
+its uncommitted changes."
+  (let* ((dir (switchboard-session-dir s))
+         (branch (switchboard--git dir "branch" "--show-current")))
     (when (and branch (not (string-empty-p branch))
                (not (equal branch (switchboard-session-branch s))))
       (setf (switchboard-session-branch s) branch)
-      (switchboard--save-soon))))
+      (switchboard--save-soon))
+    (setf (switchboard-session-changes s) (switchboard--changes dir))))
+
+(defun switchboard--changes (dir)
+  "(ADDED DELETED UNTRACKED) for DIR's uncommitted work, or nil if none."
+  (let ((added 0) (deleted 0)
+        (untracked (length (split-string (or (switchboard--git dir "ls-files" "--others"
+                                                                "--exclude-standard")
+                                             "")
+                                         "\n" t))))
+    ;; Binary files show as "-	-".
+    (dolist (line (split-string (or (switchboard--git dir "diff" "HEAD" "--numstat") "") "\n" t))
+      (pcase (split-string line "\t")
+        (`(,a ,d . ,_) (cl-incf added (string-to-number a)) (cl-incf deleted (string-to-number d)))))
+    (and (or (> added 0) (> deleted 0) (> untracked 0))
+         (list added deleted untracked))))
 
 (defun switchboard--finish-turn (s status)
   (setf (switchboard-session-unread s) (not (switchboard--watching-p s)))
@@ -525,7 +542,7 @@ Called by switchboard-hook.sh through emacsclient."
       (pcase event
         ("SessionStart"
          (setf (switchboard-session-resume-id s) (alist-get 'session_id payload))
-         (switchboard--update-branch s)
+         (switchboard--update-git s)
          (switchboard--update-tokens s payload)
          (switchboard--save-soon))
         ("UserPromptSubmit"
@@ -548,7 +565,7 @@ Called by switchboard-hook.sh through emacsclient."
          (switchboard--set s 'waiting))
         ("Stop"
          (setf (switchboard-session-detail s) nil)
-         (switchboard--update-branch s)
+         (switchboard--update-git s)
          (switchboard--update-tokens s payload)
          (switchboard--finish-turn s 'ready))
         ("StopFailure"
@@ -860,6 +877,29 @@ Claude sessions continue their conversation; Codex resumes its last one."
                            :text-anchor "middle")
     w))
 
+(defun switchboard--changes-parts (s)
+  "S's uncommitted changes as ((TEXT . FACE) ...), left to right."
+  (pcase (switchboard-session-changes s)
+    ('nil nil)
+    (`(0 0 ,_) '(("•" . switchboard-stopped)))   ; only new, untracked files
+    (`(,a ,d ,_) `((,(format "+%d" a) . switchboard-ready)
+                   (,(format "−%d" d) . switchboard-error)))))
+
+(defun switchboard--changes-width (s size)
+  "Pixels `switchboard--draw-changes' takes for S, with the gap before it."
+  (let ((parts (switchboard--changes-parts s)))
+    (if parts
+        (+ 8 (cl-reduce #'+ (mapcar (lambda (p) (+ 4 (switchboard--text-width (car p) size)))
+                                    parts)))
+      0)))
+
+(defun switchboard--draw-changes (svg s x y size)
+  "Draw S's uncommitted changes ending at X."
+  (dolist (part (reverse (switchboard--changes-parts s)))
+    (switchboard--svg-text svg (car part) x y size (switchboard--color (cdr part))
+                           :text-anchor "end")
+    (setq x (- x (switchboard--text-width (car part) size) 4))))
+
 (defun switchboard--row (s index width selected pal)
   "Image for S's row, WIDTH pixels wide; SELECTED is point's row."
   (let* ((fs (switchboard--font-size))
@@ -916,7 +956,9 @@ Claude sessions continue their conversation; Codex resumes its last one."
              (branch (and (switchboard-session-branch s)
                           (switchboard--clip (concat "⎇ " (switchboard-session-branch s))
                                              small (* 0.4 (- age-x text-x)))))
-             (branch-w (if branch (+ (switchboard--text-width branch small) 12) 0))
+             (changes-w (switchboard--changes-width s small))
+             (branch-w (+ (if branch (+ (switchboard--text-width branch small) 12) 0)
+                          changes-w))
              (text (string-replace "\n" " " (or (switchboard-session-detail s)
                                                 (switchboard-session-task s)
                                                 ""))))
@@ -925,8 +967,9 @@ Claude sessions continue their conversation; Codex resumes its last one."
         (switchboard--svg-text svg (switchboard--clip text sub (- age-x text-x branch-w))
                                text-x y2 sub (plist-get pal :dim))
         (when branch
-          (switchboard--svg-text svg branch age-x y2 small (plist-get pal :dim)
-                                 :text-anchor "end"))))
+          (switchboard--svg-text svg branch (- age-x changes-w) y2 small (plist-get pal :dim)
+                                 :text-anchor "end"))
+        (switchboard--draw-changes svg s age-x y2 small)))
     (switchboard--image svg)))
 
 (defun switchboard--group-row (title count folded width pal)
@@ -1605,7 +1648,7 @@ worktree or an unmerged branch is only removed once you confirm it."
              (process-live-p (get-buffer-process (switchboard-session-buffer s))))
     (user-error "%s is still running" (switchboard--title s)))
   (switchboard--set s 'ready)
-  (switchboard--update-branch s)        ; it may have moved while nothing ran
+  (switchboard--update-git s)        ; it may have moved while nothing ran
   (switchboard--spawn s nil t))
 
 (defun switchboard-magit (s)
