@@ -1665,7 +1665,10 @@ An empty NAME hands naming back to Claude."
   (switchboard--render))
 
 (defun switchboard-kill (s)
-  "Kill session S.  Its worktree and branch are kept."
+  "Kill session S.
+If it had its own worktree, merged and with nothing uncommitted, offer
+to remove that and its branch too; otherwise they're kept, for
+`switchboard-prune-worktrees' to clear later."
   (interactive (list (switchboard--at-point)))
   (when (y-or-n-p (format "Kill %s%s? " (switchboard--title s)
                           (if (eq (switchboard-session-status s) 'working) " (working!)" "")))
@@ -1679,9 +1682,31 @@ An empty NAME hands naming back to Claude."
         (kill-buffer buf)))
     (setq switchboard--sessions (delq s switchboard--sessions))
     (switchboard--save-soon)
-    (message "Killed %s; %s is still there" (switchboard--title s)
-             (abbreviate-file-name (switchboard-session-dir s)))
-    (switchboard--render)))
+    (switchboard--render)
+    (switchboard--offer-worktree-removal s)))
+
+(defun switchboard--offer-worktree-removal (s)
+  "After killing S, offer to remove its worktree if nothing would be lost."
+  (let* ((dir (file-name-as-directory (expand-file-name (switchboard-session-dir s))))
+         (own (and (string-prefix-p (expand-file-name switchboard-worktree-directory) dir)
+                   (not (cl-find dir switchboard--sessions
+                                 :key (lambda (o) (file-name-as-directory
+                                                   (expand-file-name (switchboard-session-dir o))))
+                                 :test #'equal))))
+         (info (and own (file-directory-p dir) (switchboard--worktree-info dir))))
+    (pcase info
+      ('nil (message "Killed %s" (switchboard--title s)))
+      (`(,root ,branch t nil)
+       (if (y-or-n-p (format "Killed %s.  Remove its worktree and branch %s too? "
+                             (switchboard--title s) branch))
+           (if (switchboard--remove-worktree dir root branch t)
+               (message "Removed %s and %s" (abbreviate-file-name dir) branch)
+             (message "Couldn't remove %s" (abbreviate-file-name dir)))
+         (message "Kept %s" (abbreviate-file-name dir))))
+      (`(,_ ,branch ,merged ,_)
+       (message "Killed %s; kept %s, it has %s.  P removes it later"
+                (switchboard--title s) (abbreviate-file-name dir)
+                (if merged "uncommitted changes" (format "unmerged work on %s" branch)))))))
 
 (defun switchboard--orphan-worktrees ()
   "Worktrees under `switchboard-worktree-directory' that no session uses.
@@ -1697,18 +1722,30 @@ Return a list of (DIR ROOT BRANCH MERGED DIRTY)."
      (cl-loop
       for dir in (directory-files repo t "\\`[^.]")
       for dir/ = (file-name-as-directory dir)
-      for common = (and (file-directory-p dir)
-                        (not (member dir/ used))
-                        (switchboard--git dir "rev-parse" "--path-format=absolute"
-                                          "--git-common-dir"))
-      when common
-      collect
-      (let ((root (file-name-as-directory (file-name-directory (directory-file-name common))))
-            (branch (switchboard--git dir "branch" "--show-current")))
-        (list dir/ root branch
-              (and branch (not (string-empty-p branch))
-                   (switchboard--git root "merge-base" "--is-ancestor" branch "HEAD") t)
-              (not (string-empty-p (or (switchboard--git dir "status" "--porcelain") "")))))))))
+      for info = (and (file-directory-p dir) (not (member dir/ used))
+                      (switchboard--worktree-info dir/))
+      when info collect (cons dir/ info)))))
+
+(defun switchboard--worktree-info (dir)
+  "(ROOT BRANCH MERGED DIRTY) for the worktree at DIR, or nil if it isn't one.
+ROOT is its project's main checkout; MERGED means BRANCH is merged into
+the branch checked out there; DIRTY, that DIR has uncommitted changes."
+  (when-let* ((common (switchboard--git dir "rev-parse" "--path-format=absolute"
+                                        "--git-common-dir")))
+    (let ((root (file-name-as-directory (file-name-directory (directory-file-name common))))
+          (branch (switchboard--git dir "branch" "--show-current")))
+      (list root branch
+            (and branch (not (string-empty-p branch))
+                 (switchboard--git root "merge-base" "--is-ancestor" branch "HEAD") t)
+            (not (string-empty-p (or (switchboard--git dir "status" "--porcelain") "")))))))
+
+(defun switchboard--remove-worktree (dir root branch delete-branch)
+  "Remove the worktree at DIR from ROOT, and BRANCH too if DELETE-BRANCH.
+Return non-nil if the worktree went."
+  (when (switchboard--git root "worktree" "remove" "--force" dir)
+    (when (and delete-branch branch (not (string-empty-p branch)))
+      (switchboard--git root "branch" "-D" branch))
+    t))
 
 (defun switchboard-prune-worktrees ()
   "Remove worktrees that no session uses, with their branches.
@@ -1730,13 +1767,12 @@ worktree or an unmerged branch is only removed once you confirm it."
         (when (or (not dirty)
                   (yes-or-no-p (format "%s has uncommitted changes.  Throw them away? "
                                        (abbreviate-file-name dir))))
-          (if (not (switchboard--git root "worktree" "remove" "--force" dir))
-              (message "Switchboard: couldn't remove %s" (abbreviate-file-name dir))
-            (cl-incf removed)
-            (when (and branch (not (string-empty-p branch))
-                       (or merged
-                           (y-or-n-p (format "%s isn't merged.  Delete it anyway? " branch))))
-              (switchboard--git root "branch" "-D" branch))))))
+          (if (switchboard--remove-worktree
+               dir root branch
+               (or merged (and branch (not (string-empty-p branch))
+                               (y-or-n-p (format "%s isn't merged.  Delete it anyway? " branch)))))
+              (cl-incf removed)
+            (message "Switchboard: couldn't remove %s" (abbreviate-file-name dir))))))
     (message "Removed %d worktree%s" removed (if (= removed 1) "" "s"))))
 
 (defun switchboard-resume (s)
@@ -1863,7 +1899,7 @@ since `defvar-keymap' and `defface' keep existing values."
     (switchboard-new "Start a new session")
     (switchboard-rename "Rename the session at point")
     (switchboard-resume "Resume an exited session")
-    (switchboard-kill "Kill it (worktree and branch are kept)")
+    (switchboard-kill "Kill it, offering to remove its worktree if merged")
     (switchboard-prune-worktrees "Remove worktrees no session uses")
     (switchboard-mark "Toggle its broadcast mark")
     (switchboard-unmark-all "Clear every broadcast mark")

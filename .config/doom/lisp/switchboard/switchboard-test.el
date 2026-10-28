@@ -224,6 +224,85 @@ recorded in `switchboard-test--notified'."
               (should (eq (buffer-local-value 'switchboard--session buf) new))))
         (kill-buffer buf)))))
 
+(defmacro switchboard-test--with-worktrees (names &rest body)
+  "Run BODY with a scratch repo and a worktree per name in NAMES.
+`switchboard-worktree-directory' points at the scratch area; in BODY,
+`root' is the repo and `(wt NAME)' a worktree's directory."
+  (declare (indent 1))
+  `(let* ((top (file-name-as-directory (make-temp-file "switchboard-wt" t)))
+          (root (file-name-as-directory (expand-file-name "repo" top)))
+          (switchboard-worktree-directory (expand-file-name "wt/" top)))
+     (cl-flet ((git (dir &rest args)
+                 (let ((default-directory dir))
+                   (apply #'call-process "git" nil nil nil
+                          "-c" "user.name=t" "-c" "user.email=t@t" args)))
+               (wt (name) (file-name-as-directory
+                           (expand-file-name (concat "repo/" name)
+                                             switchboard-worktree-directory))))
+       (unwind-protect
+           (progn
+             (make-directory root)
+             (git root "init" "-q" "-b" "main")
+             (git root "commit" "-q" "--allow-empty" "-m" "init")
+             (dolist (name ,names) (switchboard--add-worktree root name))
+             ,@body)
+         (delete-directory top t)))))
+
+(ert-deftest switchboard-test-kill-removes-a-merged-clean-worktree ()
+  (switchboard-test--with-worktrees '("wren")
+    (let* ((s (switchboard--session-create :id "wren-0001" :name "wren" :root root
+                                           :dir (wt "wren") :branch "sb/wren"))
+           (switchboard--sessions nil))
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (_) t))
+                ((symbol-function 'message) #'ignore))
+        (switchboard--offer-worktree-removal s))
+      (should-not (file-directory-p (wt "wren")))
+      (should-not (switchboard--git root "rev-parse" "--verify" "--quiet" "sb/wren")))))
+
+(ert-deftest switchboard-test-kill-keeps-unmerged-work-without-asking ()
+  (switchboard-test--with-worktrees '("wren")
+    (git (wt "wren") "commit" "-q" "--allow-empty" "-m" "work")
+    (let* ((s (switchboard--session-create :id "wren-0001" :name "wren" :root root
+                                           :dir (wt "wren") :branch "sb/wren"))
+           (switchboard--sessions nil)
+           said)
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (_) (error "Shouldn't ask")))
+                ((symbol-function 'message) (lambda (&rest args) (setq said (apply #'format args)))))
+        (switchboard--offer-worktree-removal s))
+      (should (file-directory-p (wt "wren")))
+      (should (string-match-p "unmerged work on sb/wren" said)))))
+
+(ert-deftest switchboard-test-kill-leaves-a-shared-worktree ()
+  (switchboard-test--with-worktrees '("wren")
+    (let* ((s (switchboard--session-create :id "wren-0001" :name "wren" :root root
+                                           :dir (wt "wren")))
+           (other (switchboard--session-create :id "kite-0001" :name "kite" :root root
+                                               :dir (wt "wren")))
+           (switchboard--sessions (list other)))
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (_) (error "Shouldn't ask")))
+                ((symbol-function 'message) #'ignore))
+        (switchboard--offer-worktree-removal s))
+      (should (file-directory-p (wt "wren"))))))
+
+(ert-deftest switchboard-test-prune-sorts-merged-unmerged-and-dirty ()
+  (switchboard-test--with-worktrees '("a" "b" "c")
+    (git (wt "b") "commit" "-q" "--allow-empty" "-m" "work")
+    (with-temp-file (expand-file-name "new" (wt "c")) (insert "x"))
+    (let ((switchboard--sessions nil) asked)
+      (should (equal (mapcar #'cddr (switchboard--orphan-worktrees))
+                     '(("sb/a" t nil) ("sb/b" nil nil) ("sb/c" t t))))
+      (cl-letf (((symbol-function 'completing-read-multiple)
+                 (lambda (_ choices &rest _) (mapcar #'car choices)))
+                ((symbol-function 'yes-or-no-p) (lambda (p) (push p asked) t))
+                ((symbol-function 'y-or-n-p) (lambda (p) (push p asked) nil))
+                ((symbol-function 'message) #'ignore))
+        (switchboard-prune-worktrees))
+      (should-not (switchboard--orphan-worktrees))
+      ;; Asked about c's changes and b's unmerged branch, which it kept.
+      (should (= (length asked) 2))
+      (should (switchboard--git root "rev-parse" "--verify" "--quiet" "sb/b"))
+      (should-not (switchboard--git root "rev-parse" "--verify" "--quiet" "sb/a")))))
+
 (ert-deftest switchboard-test-parse-git-handles-binary-files ()
   (should (equal (switchboard--parse-git "sb/heron\n@@\n-\t-\timg.png\n4\t1\ta.el\n@@\n")
                  '("sb/heron" 4 1 0))))
