@@ -525,6 +525,7 @@ Called by switchboard-hook.sh through emacsclient."
       (pcase event
         ("SessionStart"
          (setf (switchboard-session-resume-id s) (alist-get 'session_id payload))
+         (switchboard--update-branch s)
          (switchboard--update-tokens s payload)
          (switchboard--save-soon))
         ("UserPromptSubmit"
@@ -1604,6 +1605,7 @@ worktree or an unmerged branch is only removed once you confirm it."
              (process-live-p (get-buffer-process (switchboard-session-buffer s))))
     (user-error "%s is still running" (switchboard--title s)))
   (switchboard--set s 'ready)
+  (switchboard--update-branch s)        ; it may have moved while nothing ran
   (switchboard--spawn s nil t))
 
 (defun switchboard-magit (s)
