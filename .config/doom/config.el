@@ -20,10 +20,20 @@
 ;;
 ;;; UI
 
-;; The old config used Monaco 190 (1/10 pt) on macOS, Ubuntu Mono 150 elsewhere.
+;; Same font as Ghostty (.config/ghostty/config) on macOS.
 (setq doom-font (if (featurep :system 'macos)
-                    (font-spec :family "Monaco" :size 19)
+                    (font-spec :family "Berkeley Mono" :size 18)
                   (font-spec :family "Ubuntu Mono" :size 15)))
+
+;; Claude Code marks tool calls with ⏺ (U+23FA) and its mode line with ⏵.
+;; Berkeley Mono has none of the U+23E9-U+23FA media symbols, so Emacs falls
+;; back to Apple Color Emoji and draws emoji; Ghostty draws them as text. STIX Two Math
+;; ships with macOS and has text versions. Doom rebuilds the fontset whenever
+;; the font changes, hence the hook.
+(when (featurep :system 'macos)
+  (add-hook! 'after-setting-font-hook
+    (defun +ui-text-media-symbols-h ()
+      (set-fontset-font t '(#x23e9 . #x23fa) "STIX Two Math"))))
 
 (setq doom-theme 'modus-operandi)
 
@@ -281,8 +291,9 @@ This command does not push text to `kill-ring'."
       "s-g" #'minibuffer-keyboard-quit
       "s-9" #'winner-undo
       "s-0" #'winner-redo
-      "s-{" #'previous-buffer
-      "s-}" #'next-buffer
+      "s-{" #'switchboard-previous-session ; previous-buffer outside Switchboard
+      "s-}" #'switchboard-next-session
+      "s-S-<return>" #'switchboard-zoom          ; Ghostty's split zoom; maximize elsewhere
       "C-=" #'er/expand-region
       "C-c o" #'occur)
 
@@ -318,6 +329,48 @@ This command does not push text to `kill-ring'."
 (after! magit
   (setq magit-display-buffer-function
         #'magit-display-buffer-same-window-except-diff-v1))
+
+
+;;
+;;; Agents
+;;
+;; Switchboard (lisp/switchboard): Claude Code / Codex sessions in ghostel
+;; terminals, listed in a left side window with their state. SPC e was free.
+
+(add-load-path! "lisp/switchboard")
+
+(use-package! switchboard
+  :commands (switchboard switchboard-new switchboard-toggle-focus
+             switchboard-next-attention switchboard-hook
+             switchboard-next-session switchboard-previous-session
+             switchboard-resume-all switchboard-shell switchboard-zoom))
+
+;; Claude Code pads its ⎿ result lines with no-break spaces, which Emacs
+;; underlines by default. In a terminal that's noise, not a hint.
+(setq-hook! 'ghostel-mode-hook nobreak-char-display nil)
+
+;; Doom binds M-<backspace> (backward-kill-word) and s-<backspace> (kill to
+;; bol) in insert state, which outranks ghostel's keymap, so they edited the
+;; Emacs buffer instead of reaching the program. Send them on like Ghostty:
+;; Alt-Backspace deletes a word, Cmd-Backspace sends C-u to kill the line.
+(after! ghostel
+  ;; ghostel defaults to $SHELL, which the envvar file pins to whatever shell
+  ;; ran `doom sync' (it once captured zsh). Terminals get the login shell.
+  (setq ghostel-shell (or (executable-find "fish") ghostel-shell))
+  (map! :map ghostel-mode-map
+        :i "M-<backspace>" #'ghostel--send-event
+        :i "M-DEL"         #'ghostel--send-event
+        :i "s-<backspace>" (cmd! (ghostel-send-string "\C-u"))))
+
+(map! :leader
+      (:prefix ("e" . "agents")
+       :desc "Session list"         "e" #'switchboard
+       :desc "List <-> terminal"    "w" #'switchboard-toggle-focus
+       :desc "New session"          "c" #'switchboard-new
+       :desc "Next needing you"     "n" #'switchboard-next-attention
+       :desc "Resume all sessions"  "r" #'switchboard-resume-all
+       :desc "Shell in worktree"    "s" #'switchboard-shell
+       :desc "Zoom agent/shell"     "z" #'switchboard-zoom))
 
 
 ;;
