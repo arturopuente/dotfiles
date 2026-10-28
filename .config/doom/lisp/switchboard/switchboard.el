@@ -510,30 +510,66 @@ of your own instead."
     (with-current-buffer (switchboard-session-buffer s)
       (rename-buffer (format "*sb:%s*" (switchboard--title s)) t))))
 
+(defvar switchboard--git-procs (make-hash-table :test 'equal)
+  "Session id to the git process reading its branch and changes.")
+
+(defconst switchboard--git-script
+  (concat "git branch --show-current 2>/dev/null; echo @@;"
+          "git diff HEAD --numstat 2>/dev/null; echo @@;"
+          "git ls-files --others --exclude-standard 2>/dev/null")
+  "One shell run that prints the branch, the diff and new files, split by @@.")
+
 (defun switchboard--update-git (s)
   "Re-read S's branch, in case the agent checked out another one, and
-its uncommitted changes."
-  (let* ((dir (switchboard-session-dir s))
-         (branch (switchboard--git dir "branch" "--show-current")))
-    (when (and branch (not (string-empty-p branch))
-               (not (equal branch (switchboard-session-branch s))))
-      (setf (switchboard-session-branch s) branch)
-      (switchboard--save-soon))
-    (setf (switchboard-session-changes s) (switchboard--changes dir))))
+its uncommitted changes.  Git runs in the background, so a big repo
+doesn't stall Emacs; asked again while it runs, it runs once more."
+  (let* ((id (switchboard-session-id s))
+         (running (gethash id switchboard--git-procs))
+         (dir (switchboard-session-dir s)))
+    (cond
+     ((process-live-p running) (process-put running 'again t))
+     ((file-directory-p dir)
+      (let ((default-directory dir))
+        (puthash id
+                 (make-process
+                  :name "switchboard-git" :noquery t :connection-type 'pipe
+                  :buffer (generate-new-buffer " *switchboard-git*")
+                  :command (list "sh" "-c" switchboard--git-script)
+                  :sentinel (lambda (proc _event)
+                              (unless (process-live-p proc)
+                                (switchboard--git-done s proc))))
+                 switchboard--git-procs))))))
 
-(defun switchboard--changes (dir)
-  "(ADDED DELETED UNTRACKED) for DIR's uncommitted work, or nil if none."
-  (let ((added 0) (deleted 0)
-        (untracked (length (split-string (or (switchboard--git dir "ls-files" "--others"
-                                                                "--exclude-standard")
-                                             "")
-                                         "\n" t))))
+(defun switchboard--git-done (s proc)
+  (let ((output (with-current-buffer (process-buffer proc) (buffer-string))))
+    (kill-buffer (process-buffer proc))
+    (remhash (switchboard-session-id s) switchboard--git-procs)
+    (when (memq s switchboard--sessions)
+      (pcase-let ((`(,branch . ,changes) (switchboard--parse-git output)))
+        (when (and branch (not (equal branch (switchboard-session-branch s))))
+          (setf (switchboard-session-branch s) branch)
+          (switchboard--save-soon))
+        (unless (equal changes (switchboard-session-changes s))
+          (setf (switchboard-session-changes s) changes)
+          (switchboard--schedule-render)))
+      (when (process-get proc 'again)
+        (switchboard--update-git s)))))
+
+(defun switchboard--parse-git (output)
+  "Parse `switchboard--git-script' OUTPUT into (BRANCH . CHANGES).
+BRANCH is nil when detached or not a repository; CHANGES is
+(ADDED DELETED UNTRACKED), or nil if there are none."
+  (pcase-let* ((`(,branch ,diff ,others) (split-string output "^@@\n"))
+               (branch (string-trim (or branch "")))
+               (added 0) (deleted 0)
+               (untracked (length (split-string (or others "") "\n" t))))
     ;; Binary files show as "-	-".
-    (dolist (line (split-string (or (switchboard--git dir "diff" "HEAD" "--numstat") "") "\n" t))
+    (dolist (line (split-string (or diff "") "\n" t))
       (pcase (split-string line "\t")
         (`(,a ,d . ,_) (cl-incf added (string-to-number a)) (cl-incf deleted (string-to-number d)))))
-    (and (or (> added 0) (> deleted 0) (> untracked 0))
-         (list added deleted untracked))))
+    (cons (and (not (string-empty-p branch)) branch)
+          (and (or (> added 0) (> deleted 0) (> untracked 0))
+               (list added deleted untracked)))))
 
 (defun switchboard--finish-turn (s status)
   (setf (switchboard-session-unread s) (not (switchboard--watching-p s)))

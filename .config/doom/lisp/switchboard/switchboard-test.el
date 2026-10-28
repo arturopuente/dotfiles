@@ -121,22 +121,36 @@ recorded in `switchboard-test--notified'."
     (switchboard-test--hook "PermissionRequest" '((tool_name . "Bash")))
     (should (= (length switchboard-test--notified) 1))))
 
-(ert-deftest switchboard-test-changes-counts-lines-and-new-files ()
-  (let ((dir (file-name-as-directory (make-temp-file "switchboard-git" t))))
-    (unwind-protect
-        (let ((default-directory dir))
-          (should-not (switchboard--changes dir))   ; not a repository
-          (call-process "git" nil nil nil "init" "-q")
-          (with-temp-file "f" (insert "a\nb\nc\n"))
-          (call-process "git" nil nil nil "add" "f")
-          (call-process "git" nil nil nil "-c" "user.name=t" "-c" "user.email=t@t"
-                        "commit" "-qm" "init")
-          (should-not (switchboard--changes dir))
-          (with-temp-file "f" (insert "a\nX\nY\nZ\n"))
-          (should (equal (switchboard--changes dir) '(3 2 0)))
-          (with-temp-file "new" (insert "x"))
-          (should (equal (switchboard--changes dir) '(3 2 1))))
-      (delete-directory dir t))))
+(defun switchboard-test--refresh (s)
+  "Run `switchboard--update-git' for S and wait for it to finish."
+  (switchboard--update-git s)
+  (while (gethash (switchboard-session-id s) switchboard--git-procs)
+    (accept-process-output nil 0.05)))
+
+(ert-deftest switchboard-test-git-reads-branch-and-changes ()
+  (switchboard-test--with-session s
+    (let ((default-directory (switchboard-session-dir s)))
+      (switchboard-test--refresh s)               ; not a repository
+      (should-not (switchboard-session-branch s))
+      (should-not (switchboard-session-changes s))
+      (call-process "git" nil nil nil "init" "-q" "-b" "main")
+      (with-temp-file "f" (insert "a\nb\nc\n"))
+      (call-process "git" nil nil nil "add" "f")
+      (call-process "git" nil nil nil "-c" "user.name=t" "-c" "user.email=t@t"
+                    "commit" "-qm" "init")
+      (switchboard-test--refresh s)
+      (should (equal (switchboard-session-branch s) "main"))
+      (should-not (switchboard-session-changes s))
+      (with-temp-file "f" (insert "a\nX\nY\nZ\n"))
+      (switchboard-test--refresh s)
+      (should (equal (switchboard-session-changes s) '(3 2 0)))
+      (with-temp-file "new" (insert "x"))
+      (switchboard-test--refresh s)
+      (should (equal (switchboard-session-changes s) '(3 2 1))))))
+
+(ert-deftest switchboard-test-parse-git-handles-binary-files ()
+  (should (equal (switchboard--parse-git "sb/heron\n@@\n-\t-\timg.png\n4\t1\ta.el\n@@\n")
+                 '("sb/heron" 4 1 0))))
 
 (provide 'switchboard-test)
 ;;; switchboard-test.el ends here
