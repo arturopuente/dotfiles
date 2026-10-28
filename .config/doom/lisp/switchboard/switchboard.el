@@ -159,6 +159,9 @@
   "Non-nil if S is in the selected window."
   (eq (window-buffer (selected-window)) (switchboard-session-buffer s)))
 
+(defvar switchboard--notified nil
+  "Ids of sessions with a terminal-notifier notification that may still be up.")
+
 (defun switchboard--notify (s status)
   "Raise a macOS notification that S moved to STATUS, if you aren't watching it.
 With terminal-notifier, clicking it brings Emacs back on S; osascript
@@ -171,12 +174,13 @@ can only post it."
             (body (or (switchboard-session-detail s) (switchboard--project s))))
         (cond
          ((executable-find "terminal-notifier")
+          (push (switchboard-session-id s) switchboard--notified)
           ;; A leading [ or - would be read as an option, so escape it.
           (start-process "switchboard-notify" nil "terminal-notifier"
                          "-title" title "-subtitle" subtitle
                          "-message" (replace-regexp-in-string "\\`[[-]" "\\\\\\&" body)
                          ;; One per session: a newer one replaces the last.
-                         "-group" (concat "switchboard-" (switchboard-session-id s))
+                         "-group" (switchboard--notification-group s)
                          "-activate" "org.gnu.Emacs"
                          "-execute" (mapconcat #'shell-quote-argument
                                                (list (or (executable-find "emacsclient") "emacsclient")
@@ -192,6 +196,17 @@ can only post it."
                          "-e" "display notification (item 3 of argv) with title (item 1 of argv) subtitle (item 2 of argv)"
                          "-e" "end run"
                          title subtitle body)))))))
+
+(defun switchboard--notification-group (s)
+  (concat "switchboard-" (switchboard-session-id s)))
+
+(defun switchboard--clear-notification (s)
+  "Take S's notification out of Notification Center: you've seen it now."
+  (when (member (switchboard-session-id s) switchboard--notified)
+    (setq switchboard--notified (delete (switchboard-session-id s) switchboard--notified))
+    (when (executable-find "terminal-notifier")
+      (start-process "switchboard-notify" nil "terminal-notifier"
+                     "-remove" (switchboard--notification-group s)))))
 
 (defun switchboard--notification-clicked (id)
   "Open session ID, with the sidebar on its row: a notification was clicked."
@@ -1316,6 +1331,7 @@ session it maximizes the window instead (`doom/window-maximize-buffer')."
     (when select (select-window win))
     (switchboard--refit win)
     (switchboard--select-row s)
+    (switchboard--clear-notification s)
     (switchboard--schedule-render)
     win))
 
