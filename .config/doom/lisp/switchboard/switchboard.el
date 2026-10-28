@@ -304,27 +304,19 @@ them: claude would think it is nested, and turns off transcripts.")
       (switchboard--set s 'working))
     buf))
 
-;;;###autoload
-(defun switchboard-new (harness root prompt worktree &optional title)
+(defun switchboard--start (harness root prompt worktree &optional title dir)
   "Start a HARNESS session in project ROOT, sending PROMPT first.
 With WORKTREE non-nil it gets its own worktree, on a branch named after
-a free handle from `switchboard-names'.  Claude titles the session once
-its first turn ends; TITLE (asked for with a prefix argument) pins a
+a free handle from `switchboard-names'; otherwise it runs in DIR, or
+ROOT.  Claude titles the session once its first turn ends; TITLE pins a
 name of your own instead."
-  (interactive
-   (let* ((harness (intern (completing-read "Harness: " '("claude" "codex") nil t)))
-          (root (switchboard--read-project))
-          (prompt (read-string "First prompt (RET to skip): "))
-          (worktree (and (switchboard--git root "rev-parse" "--git-dir")
-                         (y-or-n-p "New worktree? "))))
-     (list harness root prompt worktree
-           (and current-prefix-arg (read-string "Name: ")))))
   (setq title (and title (not (string-blank-p title)) title))
   (pcase-let* ((name (switchboard--free-name))
                (`(,dir . ,branch)
                 (if worktree
                     (switchboard--add-worktree root name)
-                  (cons root (switchboard--git root "branch" "--show-current"))))
+                  (let ((dir (or dir root)))
+                    (cons dir (switchboard--git dir "branch" "--show-current")))))
                (s (switchboard--session-create
                    :id (format "%s-%04x" name (random #xffff))
                    :name name :title title :named (and title t)
@@ -332,8 +324,66 @@ name of your own instead."
     (setq switchboard--sessions (append switchboard--sessions (list s)))
     (switchboard--save-soon)
     (switchboard--display-sidebar)
-    (switchboard--spawn s (and (not (string-empty-p prompt)) prompt))
+    (switchboard--spawn s (and prompt (not (string-empty-p prompt)) prompt))
     s))
+
+;; A menu like magit's, so a session starts with one key: pick the
+;; options first if you want any, then press the harness.
+
+(defun switchboard--new-scope ()
+  "(ROOT . DIR) for a new session: the row at point's, or this project."
+  (let ((here (and (eq (current-buffer) (get-buffer switchboard--buffer-name))
+                   (get-text-property (point) 'switchboard-session)))
+        (project (and (fboundp 'doom-project-root) (doom-project-root))))
+    (cond (here (cons (switchboard-session-root here) (switchboard-session-dir here)))
+          (project (list (file-name-as-directory (expand-file-name project)))))))
+
+(defun switchboard--new-description ()
+  (let ((scope (transient-scope)))
+    (format "New session in %s"
+            (propertize (if scope (abbreviate-file-name (or (cdr scope) (car scope)))
+                          "a project you pick")
+                        'face 'transient-value))))
+
+(defun switchboard--read-project-option (&rest _)
+  (abbreviate-file-name (switchboard--read-project)))
+
+(defun switchboard--new-with (harness)
+  (let* ((args (transient-args 'switchboard-new))
+         (scope (transient-scope 'switchboard-new))
+         (other (transient-arg-value "--project=" args))
+         (root (if other
+                   (file-name-as-directory (expand-file-name other))
+                 (or (car scope) (switchboard--read-project))))
+         (worktree (transient-arg-value "--worktree" args)))
+    (when (and worktree (not (switchboard--git root "rev-parse" "--git-dir")))
+      (user-error "%s is not a git repository" (abbreviate-file-name root)))
+    (switchboard--start harness root (transient-arg-value "--prompt=" args) worktree
+                        (transient-arg-value "--name=" args) (and (not other) (cdr scope)))))
+
+(transient-define-suffix switchboard-new-claude ()
+  "Start a Claude Code session."
+  (interactive)
+  (switchboard--new-with 'claude))
+
+(transient-define-suffix switchboard-new-codex ()
+  "Start a Codex session."
+  (interactive)
+  (switchboard--new-with 'codex))
+
+;;;###autoload (autoload 'switchboard-new "switchboard" nil t)
+(transient-define-prefix switchboard-new ()
+  "Start a new session, in the project and folder of the row at point."
+  [:description switchboard--new-description
+   ("-w" "New worktree" "--worktree")
+   ("-n" "Name" "--name=")
+   ("-p" "First prompt" "--prompt=")
+   ("-P" "Other project" "--project=" :reader switchboard--read-project-option)]
+  ["Start"
+   ("c" "Claude" switchboard-new-claude)
+   ("x" "Codex" switchboard-new-codex)]
+  (interactive)
+  (transient-setup 'switchboard-new nil nil :scope (switchboard--new-scope)))
 
 
 ;;; Events from the harness
