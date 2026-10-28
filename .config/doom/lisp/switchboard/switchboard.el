@@ -1121,6 +1121,7 @@ Claude sessions continue their conversation; Codex resumes its last one."
   "r" #'switchboard-resume
   "R" #'switchboard-rename
   "x" #'switchboard-kill
+  "P" #'switchboard-prune-worktrees
   "d" #'switchboard-magit
   "/" #'switchboard-filter
   "TAB" #'switchboard-fold
@@ -1540,6 +1541,62 @@ An empty NAME hands naming back to Claude."
              (abbreviate-file-name (switchboard-session-dir s)))
     (switchboard--render)))
 
+(defun switchboard--orphan-worktrees ()
+  "Worktrees under `switchboard-worktree-directory' that no session uses.
+Return a list of (DIR ROOT BRANCH MERGED DIRTY)."
+  (let ((used (mapcar (lambda (s) (file-name-as-directory
+                                   (expand-file-name (switchboard-session-dir s))))
+                      switchboard--sessions))
+        (top (expand-file-name switchboard-worktree-directory)))
+    (cl-loop
+     for repo in (and (file-directory-p top) (directory-files top t "\\`[^.]"))
+     when (file-directory-p repo)
+     nconc
+     (cl-loop
+      for dir in (directory-files repo t "\\`[^.]")
+      for dir/ = (file-name-as-directory dir)
+      for common = (and (file-directory-p dir)
+                        (not (member dir/ used))
+                        (switchboard--git dir "rev-parse" "--path-format=absolute"
+                                          "--git-common-dir"))
+      when common
+      collect
+      (let ((root (file-name-as-directory (file-name-directory (directory-file-name common))))
+            (branch (switchboard--git dir "branch" "--show-current")))
+        (list dir/ root branch
+              (and branch (not (string-empty-p branch))
+                   (switchboard--git root "merge-base" "--is-ancestor" branch "HEAD") t)
+              (not (string-empty-p (or (switchboard--git dir "status" "--porcelain") "")))))))))
+
+(defun switchboard-prune-worktrees ()
+  "Remove worktrees that no session uses, with their branches.
+You pick which; each is marked merged (into its project's checked-out
+branch) or not, and dirty if it has uncommitted changes.  A dirty
+worktree or an unmerged branch is only removed once you confirm it."
+  (interactive)
+  (let* ((orphans (or (switchboard--orphan-worktrees)
+                      (user-error "No worktrees without a session")))
+         (label (pcase-lambda (`(,dir ,_ ,branch ,merged ,dirty))
+                  (format "%s  %s%s%s" (abbreviate-file-name (directory-file-name dir))
+                          (or branch "?") (if merged "  merged" "  unmerged")
+                          (if dirty "  dirty" ""))))
+         (choices (mapcar (lambda (o) (cons (funcall label o) o)) orphans))
+         (picked (completing-read-multiple "Remove worktrees: " choices nil t))
+         (removed 0))
+    (dolist (o (mapcar (lambda (p) (cdr (assoc p choices))) picked))
+      (pcase-let ((`(,dir ,root ,branch ,merged ,dirty) o))
+        (when (or (not dirty)
+                  (yes-or-no-p (format "%s has uncommitted changes.  Throw them away? "
+                                       (abbreviate-file-name dir))))
+          (if (not (switchboard--git root "worktree" "remove" "--force" dir))
+              (message "Switchboard: couldn't remove %s" (abbreviate-file-name dir))
+            (cl-incf removed)
+            (when (and branch (not (string-empty-p branch))
+                       (or merged
+                           (y-or-n-p (format "%s isn't merged.  Delete it anyway? " branch))))
+              (switchboard--git root "branch" "-D" branch))))))
+    (message "Removed %d worktree%s" removed (if (= removed 1) "" "s"))))
+
 (defun switchboard-resume (s)
   "Restart an exited session S where its conversation left off."
   (interactive (list (switchboard--at-point)))
@@ -1631,6 +1688,7 @@ since `defvar-keymap' and `defface' keep existing values."
     (switchboard-rename "Rename the session at point")
     (switchboard-resume "Resume an exited session")
     (switchboard-kill "Kill it (worktree and branch are kept)")
+    (switchboard-prune-worktrees "Remove worktrees no session uses")
     (switchboard-mark "Toggle its broadcast mark")
     (switchboard-unmark-all "Clear every broadcast mark")
     (switchboard-broadcast "Send text to every marked session")
