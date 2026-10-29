@@ -122,13 +122,10 @@ nil notifies once."
   "Row background for stopped sessions.")
 (defface switchboard-header-focused
   '((((background light)) :background "#ffe58a") (t :background "#4d3f00"))
-  "Background of a header (the list's or a terminal's) while its window has focus.")
+  "Background of the focused window's header, and of the selected row in the list.")
 (defface switchboard-sidebar
   '((((background light)) :background "#f2f2f2") (t :background "#1e1e1e"))
   "Background of the session list.")
-(defface switchboard-highlight
-  '((((background light)) :background "#dae5ec" :extend t) (t :background "#2f3849" :extend t))
-  "The row at point in the session list.")
 
 
 
@@ -948,7 +945,6 @@ Claude sessions continue their conversation; Codex resumes its last one."
         :paper (switchboard--color 'default t)
         :fg (switchboard--color 'default)
         :dim (switchboard--color 'shadow)
-        :hl (switchboard--color 'switchboard-highlight t)
         :blue (switchboard--color 'switchboard-working)
         :claude (switchboard--color 'font-lock-builtin-face)
         :codex (switchboard--color 'font-lock-constant-face)))
@@ -1069,18 +1065,20 @@ has focus; another session on screen (in a split) only gets an outline."
          (name-face (cond ((memq status '(waiting error stopped)) color)
                           (t (plist-get pal :fg))))
          (svg (svg-create width h)))
-    ;; An outlined row (point's, with the list focused, or one on screen) is a
-    ;; rounded card on the plain background, so its tint can't show at the
-    ;; corners; the others are tinted edge to edge.
-    (let ((tint (if (memq status '(waiting error stopped working ready))
-                    (switchboard--color (intern (format "switchboard-row-%s" status)) t)
-                  (plist-get pal :bg)))
-          (focused (eq selected 'focused)))
+    ;; Each status tints its row.  An outlined row (point's, or one on screen)
+    ;; is a rounded card on the plain background, so its tint can't show at
+    ;; the corners.  Point's card is yellow, like the focused header.
+    (let* ((tint-face (and (memq status '(waiting error stopped working ready))
+                           (intern (format "switchboard-row-%s" status))))
+           (tint (if tint-face (switchboard--color tint-face t) (plist-get pal :bg)))
+           (focused (eq selected 'focused)))
       (svg-rectangle svg 0 0 width h :fill (if (or focused shown) (plist-get pal :bg) tint))
       (when (or focused shown)
         (let ((inset (if focused 2 1.5)))
           (svg-rectangle svg (+ 7 inset) inset (- width 10 inset) (- h inset inset) :rx 4
-                         :fill (if focused (plist-get pal :hl) tint)
+                         :fill (if focused
+                                   (switchboard--color 'switchboard-header-focused t)
+                                 tint)
                          :stroke (plist-get pal :blue) :stroke-width (if focused 2 1)))))
     (svg-rectangle svg 0 0 5 h :fill color)
     (when (<= index 9)
@@ -1102,15 +1100,16 @@ has focus; another session on screen (in a split) only gets an outline."
       (let* ((label (switchboard--label s))
              (label-w (* 1.08 (switchboard--text-width label small)))
              (text-x (+ name-x label-w 14))
+             ;; What's pending (a permission request, an error), if anything.
+             ;; Not the first prompt: Claude's title for the session says it.
+             (text (string-replace "\n" " " (or (switchboard-session-detail s) "")))
+             (changes-w (switchboard--changes-width s small))
              (branch (and (switchboard-session-branch s)
                           (switchboard--clip (concat "⎇ " (switchboard-session-branch s))
-                                             small (* 0.4 (- age-x text-x)))))
-             (changes-w (switchboard--changes-width s small))
+                                             small (* (if (string-empty-p text) 1 0.4)
+                                                      (- age-x text-x changes-w)))))
              (branch-w (+ (if branch (+ (switchboard--text-width branch small) 12) 0)
-                          changes-w))
-             (text (string-replace "\n" " " (or (switchboard-session-detail s)
-                                                (switchboard-session-task s)
-                                                ""))))
+                          changes-w)))
         (switchboard--svg-text svg label name-x y2 small color
                                :font-weight "bold" :letter-spacing "0.06em")
         (switchboard--svg-text svg (switchboard--clip text sub (- age-x text-x branch-w))
@@ -1200,7 +1199,7 @@ FOCUSED means the list's window is selected."
       (when (or switchboard--filter (<= (+ x (switchboard--text-width hint size) 8) width))
         (switchboard--svg-text svg hint (- width 8) (+ (/ h 2.0) (* 0.35 size)) size
                                (plist-get pal :dim) :text-anchor "end")))
-    (switchboard--draw-focus svg width h focused (plist-get pal :bg) pal)
+    (switchboard--draw-focus svg width h focused pal)
     (switchboard--image svg)))
 
 (defun switchboard--terminal-header (s width pal &optional focused)
@@ -1232,14 +1231,13 @@ FOCUSED means its window is selected."
                                         (abbreviate-file-name (switchboard-session-dir s)))
                                 size (- width x 10))
                            x y size (plist-get pal :dim))
-    (switchboard--draw-focus svg width h focused (plist-get pal :paper) pal)
+    (switchboard--draw-focus svg width h focused pal)
     (switchboard--image svg)))
 
-(defun switchboard--draw-focus (svg width h focused fill pal)
-  "Mark a header WIDTH by H as FOCUSED with a blue bar, or dim it under FILL."
-  (if focused
-      (svg-rectangle svg 0 (- h 2) width 2 :fill (plist-get pal :blue))
-    (svg-rectangle svg 0 0 width h :fill fill :fill-opacity 0.45)))
+(defun switchboard--draw-focus (svg width h focused pal)
+  "Underline a header WIDTH by H in blue if FOCUSED."
+  (when focused
+    (svg-rectangle svg 0 (- h 2) width 2 :fill (plist-get pal :blue))))
 
 (defun switchboard--header-width (win)
   "Pixels a header image needs to span WIN's header line, fringes included."
