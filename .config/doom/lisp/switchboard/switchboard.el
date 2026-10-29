@@ -280,11 +280,14 @@ If it has exited since, offer to resume it."
                                  (and (fboundp 'projectile-relevant-known-projects)
                                       (projectile-relevant-known-projects))
                                  (project-known-project-roots))))))
+    ;; A directory prompt, so typing completes paths.  It starts in the
+    ;; current project's parent, where its siblings are; RET as is takes the
+    ;; current project, and M-n steps through the other known ones.
     (file-name-as-directory
      (expand-file-name
-      (if roots
-          (completing-read "Project: " roots nil nil nil nil (car roots))
-        (read-directory-name "Project: "))))))
+      (read-directory-name (format-prompt "Project" (car roots))
+                           (and here (file-name-directory (directory-file-name here)))
+                           roots t)))))
 
 (defun switchboard--git (dir &rest args)
   "Run git with ARGS in DIR; return trimmed stdout, or nil on failure."
