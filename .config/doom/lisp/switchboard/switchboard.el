@@ -333,16 +333,42 @@ A new branch starts from START, or ROOT's checked-out commit."
       (insert (json-serialize (list :hooks hooks))))
     file))
 
+(defun switchboard--claude-background-id (s)
+  "Return the `claude attach' id of S if it runs in the background.
+A session sent to the background (Ctrl-B) outlives the process in its
+terminal, and `claude --resume' refuses it while it runs.  Its session
+id can differ from S's resume id, so it is also known by the
+SWITCHBOARD_ID it took with it from S's terminal."
+  (when-let* ((agents (ignore-errors
+                        (with-temp-buffer
+                          (call-process "claude" nil '(t nil) nil "agents" "--json")
+                          (json-parse-string (buffer-string) :object-type 'alist
+                                             :array-type 'list))))
+              (mark (format "SWITCHBOARD_ID=%s\\_>" (regexp-quote (switchboard-session-id s))))
+              (agent (cl-find-if
+                      (lambda (a)
+                        (and (equal (alist-get 'kind a) "background")
+                             (or (equal (alist-get 'sessionId a)
+                                        (switchboard-session-resume-id s))
+                                 (when-let* ((pid (alist-get 'pid a)))
+                                   (string-match-p
+                                    mark (shell-command-to-string
+                                          (format "ps eww -o command= -p %d" pid)))))))
+                      agents)))
+    (or (alist-get 'id agent) (alist-get 'sessionId agent))))
+
 (defun switchboard--command (s &optional prompt resume)
   "Return the argv that starts S, or resumes it when RESUME is non-nil."
   (pcase (switchboard-session-harness s)
     ('claude
-     ;; No -n: Claude then titles the session itself (see `switchboard--ai-title').
-     (append (list "claude" "--settings" (switchboard--claude-settings))
-             (cond ((and resume (switchboard-session-resume-id s))
-                    (list "--resume" (switchboard-session-resume-id s)))
-                   (resume (list "--continue")))
-             (and prompt (list prompt))))
+     (if-let* ((bg (and resume (switchboard--claude-background-id s))))
+         (list "claude" "attach" bg)
+       ;; No -n: Claude then titles the session itself (see `switchboard--ai-title').
+       (append (list "claude" "--settings" (switchboard--claude-settings))
+               (cond ((and resume (switchboard-session-resume-id s))
+                      (list "--resume" (switchboard-session-resume-id s)))
+                     (resume (list "--continue")))
+               (and prompt (list prompt)))))
     ('codex
      (append (list "codex")
              (and resume (list "resume" "--last"))
