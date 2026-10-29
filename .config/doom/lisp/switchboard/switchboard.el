@@ -1268,7 +1268,7 @@ has focus; another session on screen (in a split) only gets an outline."
 FOCUSED means the list's window is selected."
   (let* ((fs (switchboard--font-size))
          (size fs)
-         (h (round (* 2.2 fs)))
+         (h (round (* 2.1 fs)))
          (count (lambda (key) (cl-count key switchboard--sessions :key #'switchboard--status-key)))
          (pills (delq nil
                       (mapcar (pcase-lambda (`(,n ,face ,long ,short))
@@ -1291,6 +1291,7 @@ FOCUSED means the list's window is selected."
     (svg-rectangle svg 0 0 width h :fill (if focused
                                              (switchboard--color 'switchboard-header-focused t)
                                            (plist-get pal :bg)))
+    (svg-line svg 0 0.5 width 0.5 :stroke (switchboard--color 'window-divider))
     (svg-line svg 0 (- h 0.5) width (- h 0.5) :stroke (plist-get pal :dim) :stroke-opacity 0.25)
     (if (null pills)
         (switchboard--svg-text svg "No sessions" x (+ (/ h 2.0) (* 0.35 size)) size
@@ -1307,7 +1308,6 @@ FOCUSED means the list's window is selected."
       (when (or switchboard--filter (<= (+ x (switchboard--text-width hint size) 8) width))
         (switchboard--svg-text svg hint (- width 8) (+ (/ h 2.0) (* 0.35 size)) size
                                (plist-get pal :dim) :text-anchor "end")))
-    (switchboard--draw-focus svg width h focused pal)
     (switchboard--image svg)))
 
 (defun switchboard--terminal-header (s width pal &optional focused)
@@ -1323,6 +1323,7 @@ FOCUSED means its window is selected."
     (svg-rectangle svg 0 0 width h :fill (if focused
                                              (switchboard--color 'switchboard-header-focused t)
                                            (plist-get pal :paper)))
+    (svg-line svg 0 0.5 width 0.5 :stroke (switchboard--color 'window-divider))
     (svg-line svg 0 (- h 0.5) width (- h 0.5) :stroke (plist-get pal :dim) :stroke-opacity 0.25)
     (switchboard--draw-chip svg s x (/ (- h chip-h) 2) (round (* 1.55 fs)) chip-h pal)
     (setq x (+ x (round (* 1.55 fs)) 10))
@@ -1339,13 +1340,7 @@ FOCUSED means its window is selected."
                                         (abbreviate-file-name (switchboard-session-dir s)))
                                 size (- width x 10))
                            x y size (plist-get pal :dim))
-    (switchboard--draw-focus svg width h focused pal)
     (switchboard--image svg)))
-
-(defun switchboard--draw-focus (svg width h focused pal)
-  "Underline a header WIDTH by H in blue if FOCUSED."
-  (when focused
-    (svg-rectangle svg 0 (- h 2) width 2 :fill (plist-get pal :blue))))
 
 (defun switchboard--header-width (win)
   "Pixels a header image needs to span WIN's header line, fringes included."
