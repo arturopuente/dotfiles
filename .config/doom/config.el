@@ -366,6 +366,8 @@ This command does not push text to `kill-ring'."
 ;; 22px rows for Berkeley Mono 18, where Emacs gives 21. These are ghostel's
 ;; own faces, so the rest of Emacs keeps its theme.
 (setq-hook! 'ghostel-mode-hook line-spacing 1)
+;; Fringes in the terminal's color, not the theme's grey strip at its edges.
+(add-hook 'ghostel-mode-hook (lambda () (face-remap-add-relative 'fringe 'ghostel-default)))
 (after! ghostel
   (set-face-attribute 'ghostel-default nil :foreground "#2c232e" :background "#f8efe7")
   (cl-loop for (face . color)
