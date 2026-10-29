@@ -387,7 +387,11 @@ them: claude would think it is nested, and turns off transcripts.")
     (with-current-buffer buf
       (setq-local switchboard--session s
                   ghostel-kill-buffer-on-exit nil
-                  header-line-format '(:eval switchboard--terminal-header-image)))
+                  header-line-format '(:eval switchboard--terminal-header-image)
+                  ;; ESC interrupts the agent.  evil-ghostel's `auto' only sends
+                  ;; it to full-screen apps, and Claude Code isn't one, so ESC
+                  ;; switched evil to normal state instead.  C-c C-r toggles back.
+                  evil-ghostel--escape-mode 'terminal))
     (switchboard--schedule-render)
     (when prompt
       (setf (switchboard-session-task s) prompt)
