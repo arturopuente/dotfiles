@@ -345,6 +345,13 @@ This command does not push text to `kill-ring'."
              switchboard-next-session switchboard-previous-session
              switchboard-resume-all switchboard-shell switchboard-zoom))
 
+;; Started without a file or directory to open (from the Dock, say), Emacs
+;; resumes the saved sessions (SPC e r) and opens on the session list.
+(add-hook! 'window-setup-hook :append
+  (unless (cl-some (lambda (arg) (not (string-prefix-p "-" arg))) (cdr command-line-args))
+    (switchboard-resume-all)
+    (switchboard)))
+
 ;; Claude Code pads its ⎿ result lines with no-break spaces, which Emacs
 ;; underlines by default. In a terminal that's noise, not a hint.
 (setq-hook! 'ghostel-mode-hook nobreak-char-display nil)
