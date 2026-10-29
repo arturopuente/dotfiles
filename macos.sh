@@ -9,6 +9,9 @@ defaults write -g NSAutomaticSpellingCorrectionEnabled -bool false
 defaults write -g NSAutomaticCapitalizationEnabled -bool false
 defaults write -g NSAutomaticPeriodSubstitutionEnabled -bool false
 
+# Emacs: no font smoothing, so text is as thin and crisp as in Ghostty.
+defaults write org.gnu.Emacs AppleFontSmoothing -int 0
+
 # Caps Lock -> Control on every keyboard. The System Settings remap is stored
 # per keyboard ID, so the new laptop's keyboard wouldn't pick it up.
 AGENT="$HOME/Library/LaunchAgents/local.capslock-to-control.plist"
