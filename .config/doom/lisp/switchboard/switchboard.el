@@ -1314,8 +1314,8 @@ FOCUSED means the list's window is selected."
   "Header for S's terminal: status square, name, tag, state, branch and path.
 FOCUSED means its window is selected."
   (let* ((fs (switchboard--font-size))
-         (size (round (* 0.78 fs)))
-         (h (round (* 1.9 fs)))
+         (size fs)
+         (h (round (* 2.1 fs)))
          (y (+ (/ h 2.0) (* 0.35 fs)))
          (chip-h (round (* 1.15 fs)))
          (svg (svg-create width h))
