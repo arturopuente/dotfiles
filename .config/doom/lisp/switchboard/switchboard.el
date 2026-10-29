@@ -111,6 +111,12 @@ nil notifies once."
 (defface switchboard-row-error
   '((((background light)) :background "#ffe0e0" :extend t) (t :background "#3d1010" :extend t))
   "Row background for errored sessions.")
+(defface switchboard-row-working
+  '((((background light)) :background "#e6ecfb" :extend t) (t :background "#15203a" :extend t))
+  "Row background for sessions that are mid-turn.")
+(defface switchboard-row-ready
+  '((((background light)) :background "#e3f3e3" :extend t) (t :background "#13281a" :extend t))
+  "Row background for sessions waiting for their next prompt.")
 (defface switchboard-row-stopped
   '((((background light)) :background "#f5ecc8" :extend t) (t :background "#2e2a10" :extend t))
   "Row background for stopped sessions.")
@@ -1025,7 +1031,7 @@ Claude sessions continue their conversation; Codex resumes its last one."
          (svg (svg-create width h)))
     (svg-rectangle svg 0 0 width h
                    :fill (cond (selected (plist-get pal :hl))
-                               ((memq status '(waiting error stopped))
+                               ((memq status '(waiting error stopped working ready))
                                 (switchboard--color (intern (format "switchboard-row-%s" status)) t))
                                (t (plist-get pal :bg))))
     (when shown
