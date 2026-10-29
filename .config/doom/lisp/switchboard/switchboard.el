@@ -1138,14 +1138,14 @@ has focus; another session on screen (in a split) only gets an outline."
     ;; background; point's is yellow, like the focused header, and outlined,
     ;; and one on screen gets a thin outline.
     (let* ((focused (eq selected 'focused))
-           (inset (if focused 2 1.5)))
+           (inset 1.5))
       (svg-rectangle svg 0 0 width h :fill (plist-get pal :bg))
       (apply #'svg-rectangle svg (+ 7 inset) inset (- width 10 inset) (- h inset inset) :rx 4
              :fill (if focused
                        (switchboard--color 'switchboard-header-focused t)
                      (switchboard--row-tint s pal))
              (and (or focused shown)
-                  (list :stroke (plist-get pal :blue) :stroke-width (if focused 2 1)))))
+                  (list :stroke (switchboard--color 'window-divider) :stroke-width 1))))
     (svg-rectangle svg 0 0 5 h :fill color)
     (when (<= index 9)
       (switchboard--svg-text svg (number-to-string index) 16 y1 small (plist-get pal :dim)))
@@ -1208,7 +1208,7 @@ has focus; another session on screen (in a split) only gets an outline."
     (when selected
       (svg-rectangle svg 9 2 (- width 12) (- h 4) :rx 4
                      :fill (switchboard--color 'switchboard-header-focused t)
-                     :stroke (plist-get pal :blue) :stroke-width 2))
+                     :stroke (switchboard--color 'window-divider) :stroke-width 1))
     (let* ((right (- width 10 (switchboard--text-width ago small)))
            (meta (concat project (if gone ", folder gone" "")))
            (meta-w (+ 12 (switchboard--text-width meta small)))
@@ -1233,7 +1233,7 @@ has focus; another session on screen (in a split) only gets an outline."
     (when selected                      ; the same yellow card as a session's
       (svg-rectangle svg 4 2 (- width 7) (- h 4) :rx 4
                      :fill (switchboard--color 'switchboard-header-focused t)
-                     :stroke (plist-get pal :blue) :stroke-width 2))
+                     :stroke (switchboard--color 'window-divider) :stroke-width 1))
     (switchboard--svg-text svg (if folded "▸" "▾") 10 y fs (plist-get pal :fg))
     (switchboard--svg-text svg title 28 y title-size (plist-get pal :fg) :font-weight "bold")
     (switchboard--svg-text svg (number-to-string count)
