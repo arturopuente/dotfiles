@@ -158,6 +158,17 @@ recorded in `switchboard-test--notified'."
       (switchboard-test--hook "PostToolUse")         ; you answered
       (should-not (gethash "heron-0001" switchboard--reminders)))))
 
+(ert-deftest switchboard-test-ctrl-c-or-escape-stops-a-turn ()
+  (dolist (key '("\x03" "\e"))
+    (switchboard-test--with-session s
+      (with-temp-buffer
+        (setq switchboard--session s)
+        (switchboard-test--hook "UserPromptSubmit" '((prompt . "go")))
+        (switchboard--note-string key)
+        (should (eq (switchboard-session-status s) 'stopped))
+        (switchboard--note-string key)          ; idle: nothing to stop
+        (should (eq (switchboard-session-status s) 'stopped))))))
+
 (ert-deftest switchboard-test-same-status-notifies-once ()
   (switchboard-test--with-session s
     (switchboard-test--hook "PermissionRequest" '((tool_name . "Bash")))
@@ -302,6 +313,30 @@ recorded in `switchboard-test--notified'."
       (should (= (length asked) 2))
       (should (switchboard--git root "rev-parse" "--verify" "--quiet" "sb/b"))
       (should-not (switchboard--git root "rev-parse" "--verify" "--quiet" "sb/a")))))
+
+(ert-deftest switchboard-test-groups-keep-your-order ()
+  (let* ((mk (lambda (name root)
+               (switchboard--session-create :id name :name name :root root :dir root)))
+         (switchboard--sessions (list (funcall mk "a" "/p/api/") (funcall mk "b" "/p/web/")
+                                      (funcall mk "c" "/p/infra/") (funcall mk "d" "/p/api/")))
+         (switchboard--group 'project)
+         (switchboard--filter nil)
+         (switchboard--group-order nil)
+         (keys (lambda () (mapcar #'car (switchboard--groups)))))
+    (should (equal (funcall keys) '("api" "web" "infra")))   ; as the sessions started
+    (cl-letf (((symbol-function 'switchboard--render) #'ignore)
+              ((symbol-function 'switchboard--at-point)
+               (lambda () (car (last switchboard--sessions 2)))))   ; on infra's session
+      (switchboard-move-group-up)
+      (should (equal (funcall keys) '("api" "infra" "web")))
+      (switchboard-move-group-up 5)                             ; stops at the top
+      (should (equal (funcall keys) '("infra" "api" "web")))
+      (switchboard-move-group-down)
+      (should (equal (funcall keys) '("api" "infra" "web"))))
+    ;; A new project goes after the ones you placed.
+    (setq switchboard--sessions (append switchboard--sessions
+                                        (list (funcall mk "e" "/p/docs/"))))
+    (should (equal (funcall keys) '("api" "infra" "web" "docs")))))
 
 (ert-deftest switchboard-test-parse-git-handles-binary-files ()
   (should (equal (switchboard--parse-git "sb/heron\n@@\n-\t-\timg.png\n4\t1\ta.el\n@@\n")

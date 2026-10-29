@@ -37,9 +37,12 @@
 (declare-function ghostel--anchor-window "ghostel")
 (declare-function magit-status-setup-buffer "magit-status")
 (declare-function evil-set-initial-state "evil-core")
+(declare-function evil-define-key* "evil-core")
+(declare-function ghostel-send-C-c "ghostel")
 (defvar ghostel-kill-buffer-on-exit)
 (defvar ghostel-query-before-killing)
 (defvar ghostel-shell)
+(defvar savehist-additional-variables)
 
 (defgroup switchboard nil
   "A vertical list of agent sessions in ghostel terminals."
@@ -388,6 +391,18 @@ SWITCHBOARD_ID it took with it from S's terminal."
 If Emacs was started from inside one, a new session must not inherit
 them: claude would think it is nested, and turns off transcripts.")
 
+(defvar-keymap switchboard-agent-mode-map
+  :doc "Keys for an agent's terminal; see `switchboard-agent-mode'.")
+
+(define-minor-mode switchboard-agent-mode
+  "Keys for an agent's terminal: in insert state C-c sends Ctrl-C at once,
+as in Ghostty, instead of starting an Emacs key sequence.  In normal
+state C-c is the usual prefix (C-g gets there from insert state)."
+  :keymap switchboard-agent-mode-map)
+
+(with-eval-after-load 'evil
+  (evil-define-key* 'insert switchboard-agent-mode-map (kbd "C-c") #'ghostel-send-C-c))
+
 (defun switchboard--spawn (s &optional prompt resume)
   "Run S's harness in its buffer, creating the buffer if needed."
   (require 'ghostel)
@@ -420,7 +435,8 @@ them: claude would think it is nested, and turns off transcripts.")
                   ;; ESC interrupts the agent.  evil-ghostel's `auto' only sends
                   ;; it to full-screen apps, and Claude Code isn't one, so ESC
                   ;; switched evil to normal state instead.  C-c C-r toggles back.
-                  evil-ghostel--escape-mode 'terminal))
+                  evil-ghostel--escape-mode 'terminal)
+      (switchboard-agent-mode))
     (switchboard--schedule-render)
     (when prompt
       (setf (switchboard-session-task s) prompt)
@@ -716,7 +732,8 @@ Called by switchboard-hook.sh through emacsclient."
   (switchboard--note-input (pcase key-name ("escape" 'escape) ("return" 'return))))
 
 (defun switchboard--note-string (string &rest _)
-  (switchboard--note-input (pcase string ("\e" 'escape) ("\r" 'return))))
+  ;; Ctrl-C interrupts a turn just like ESC.
+  (switchboard--note-input (pcase string ((or "\e" "\x03") 'escape) ("\r" 'return))))
 
 (defun switchboard--note-input (key)
   (when-let* ((s switchboard--session))
@@ -886,6 +903,12 @@ Claude sessions continue their conversation; Codex resumes its last one."
                                           (or (switchboard-session-task s) ""))))
                 (split-string switchboard--filter))))
 
+(defvar switchboard--group-order nil
+  "Project groups in the order you put them with J and K.")
+
+(with-eval-after-load 'savehist
+  (add-to-list 'savehist-additional-variables 'switchboard--group-order))
+
 (defun switchboard--groups ()
   "Return ((KEY TITLE . SESSIONS) ...) in display order."
   (let ((sessions (cl-remove-if-not #'switchboard--matches-p switchboard--sessions)))
@@ -902,7 +925,12 @@ Claude sessions continue their conversation; Codex resumes its last one."
             (if group
                 (setcdr (cdr group) (append (cddr group) (list s)))
               (push (cons key (cons key (list s))) groups))))
-        (nreverse groups)))))
+        ;; Projects you've placed (J/K) first, in your order; the rest after,
+        ;; in the order their sessions started.
+        (cl-stable-sort (nreverse groups) #'<
+                        :key (lambda (g) (or (cl-position (car g) switchboard--group-order
+                                                          :test #'equal)
+                                             most-positive-fixnum)))))))
 
 (defun switchboard--shown-p (key s)
   "Folded groups still show sessions that need you or errored."
@@ -1123,12 +1151,17 @@ has focus; another session on screen (in a split) only gets an outline."
         (switchboard--draw-changes svg s age-x y2 small)))
     (switchboard--image svg)))
 
-(defun switchboard--group-row (title count folded width pal)
+(defun switchboard--group-row (title count folded width pal &optional selected)
+  "Image for a group's header; SELECTED when point is on it."
   (let* ((fs (switchboard--font-size))
          (h (round (* 1.7 fs)))
          (y (- h (round (* 0.45 fs))))
          (svg (svg-create width h)))
     (svg-rectangle svg 0 0 width h :fill (plist-get pal :bg))
+    (when selected                      ; the same yellow card as a session's
+      (svg-rectangle svg 4 2 (- width 7) (- h 4) :rx 4
+                     :fill (switchboard--color 'switchboard-header-focused t)
+                     :stroke (plist-get pal :blue) :stroke-width 2))
     (switchboard--svg-text svg (if folded "▸" "▾") 10 y (round (* 0.8 fs)) (plist-get pal :fg))
     (switchboard--svg-text svg title 26 y fs (plist-get pal :fg) :font-weight "bold")
     (switchboard--svg-text svg (number-to-string count)
@@ -1259,7 +1292,7 @@ FOCUSED means its window is selected."
           (when win (force-mode-line-update)))))))
 
 (defvar-local switchboard--drawn-selection nil
-  "The session drawn as selected, so moving point knows to redraw.")
+  "The session, or group key, drawn as selected, so moving point knows to redraw.")
 
 (defun switchboard--render ()
   (setq switchboard--render-timer nil)
@@ -1273,7 +1306,9 @@ FOCUSED means its window is selected."
                         (* switchboard-sidebar-width (frame-char-width))))
                (visible (switchboard--visible))
                (at (get-text-property (point) 'switchboard-session))
-               (selected (if (memq at visible) at (car visible)))
+               ;; Point can rest on a group's header, to fold or unfold it.
+               (at-group (and (not at) (get-text-property (point) 'switchboard-group)))
+               (selected (cond (at-group nil) ((memq at visible) at) (t (car visible))))
                (focused (and win (eq win (selected-window))))
                (waiting (cl-remove-if-not (lambda (s) (eq (switchboard-session-status s) 'waiting))
                                           switchboard--sessions))
@@ -1288,7 +1323,8 @@ FOCUSED means its window is selected."
             (insert (propertize "\n  c starts a session.\n" 'face 'shadow)))
           (pcase-dolist (`(,key ,title . ,members) (switchboard--groups))
             (insert (propertize (switchboard--group-row title (length members)
-                                                        (member key switchboard--folded) width pal)
+                                                        (member key switchboard--folded) width pal
+                                                        (equal key at-group))
                                 'switchboard-group key)
                     "\n")
             (dolist (s members)
@@ -1299,16 +1335,23 @@ FOCUSED means its window is selected."
                                     'switchboard-session s)
                         "\n"))))
           (goto-char (point-min))
-          (when-let* ((m (and selected
-                              (text-property-search-forward 'switchboard-session selected #'eq))))
+          (when-let* ((m (cond (at-group
+                                (text-property-search-forward 'switchboard-group at-group #'equal))
+                               (selected
+                                (text-property-search-forward 'switchboard-session selected #'eq)))))
             (goto-char (prop-match-beginning m)))
-          (setq switchboard--drawn-selection selected)
+          (setq switchboard--drawn-selection (or selected at-group))
           (when win (set-window-point win (point)))
           (force-mode-line-update))))))
 
+(defun switchboard--row-key ()
+  "The session, or group key, of the row at point."
+  (or (get-text-property (point) 'switchboard-session)
+      (get-text-property (point) 'switchboard-group)))
+
 (defun switchboard--follow-point ()
-  "Redraw when point lands on a different session, to move the highlight."
-  (unless (eq (get-text-property (point) 'switchboard-session) switchboard--drawn-selection)
+  "Redraw when point lands on a different row, to move the highlight."
+  (unless (equal (switchboard--row-key) switchboard--drawn-selection)
     (switchboard--render)))
 
 (defun switchboard--schedule-render ()
@@ -1342,6 +1385,10 @@ FOCUSED means its window is selected."
   "d" #'switchboard-magit
   "/" #'switchboard-filter
   "TAB" #'switchboard-fold
+  "K" #'switchboard-move-group-up
+  "J" #'switchboard-move-group-down
+  "M-<up>" #'switchboard-move-group-up
+  "M-<down>" #'switchboard-move-group-down
   "t" #'switchboard-toggle-grouping
   "v" #'switchboard-toggle-compact
   "s" #'switchboard-split
@@ -1642,16 +1689,16 @@ the next one in the same window. Anywhere else it is `next-buffer'."
     (if s (switchboard-open s) (user-error "No session %c" last-command-event))))
 
 (defun switchboard-next-line (&optional n)
-  "Move to the next session row (previous with negative N)."
+  "Move to the next session or group row (previous with negative N)."
   (interactive "p")
-  (let ((here (get-text-property (point) 'switchboard-session))
+  (let ((here (switchboard--row-key))
         (step (if (< (or n 1) 0) -1 1)))
     (dotimes (_ (abs (or n 1)))
       (while (and (zerop (forward-line step))
                   (not (bobp)) (not (eobp))
-                  (let ((s (get-text-property (point) 'switchboard-session)))
-                    (or (null s) (eq s here)))))
-      (setq here (get-text-property (point) 'switchboard-session)))
+                  (let ((k (switchboard--row-key)))
+                    (or (null k) (equal k here)))))
+      (setq here (switchboard--row-key)))
     ;; Land on the first line of a two-line row.
     (while (and (not (bobp))
                 (eq (get-text-property (1- (line-beginning-position)) 'switchboard-session)
@@ -1660,7 +1707,7 @@ the next one in the same window. Anywhere else it is `next-buffer'."
       (forward-line -1))))
 
 (defun switchboard-previous-line (&optional n)
-  "Move to the previous session row."
+  "Move to the previous session or group row."
   (interactive "p")
   (switchboard-next-line (- (or n 1))))
 
@@ -1887,7 +1934,33 @@ worktree or an unmerged branch is only removed once you confirm it."
     (setq switchboard--folded (if (member key switchboard--folded)
                                   (delete key switchboard--folded)
                                 (cons key switchboard--folded)))
+    ;; Stay on its header, so TAB again unfolds it.
+    (goto-char (point-min))
+    (when-let* ((m (text-property-search-forward 'switchboard-group key #'equal)))
+      (goto-char (prop-match-beginning m)))
     (switchboard--render)))
+
+(defun switchboard-move-group-down (&optional n)
+  "Move the project group at point N places down the list (up if negative)."
+  (interactive "p")
+  (unless (eq switchboard--group 'project)
+    (user-error "Groups by status keep their order; t groups by project"))
+  (let* ((key (or (get-text-property (point) 'switchboard-group)
+                  (switchboard--project (switchboard--at-point))))
+         ;; Every group, not just those the filter shows, so none lose their place.
+         (order (mapcar #'car (let ((switchboard--filter nil)) (switchboard--groups))))
+         (i (cl-position key order :test #'equal))
+         (j (max 0 (min (1- (length order)) (+ i (or n 1))))))
+    (unless (= i j)
+      (setq order (delete key order)
+            switchboard--group-order (append (cl-subseq order 0 j) (list key)
+                                             (nthcdr j order)))
+      (switchboard--render))))
+
+(defun switchboard-move-group-up (&optional n)
+  "Move the project group at point N places up the list."
+  (interactive "p")
+  (switchboard-move-group-down (- (or n 1))))
 
 (defun switchboard-toggle-grouping ()
   "Group the list by project or by status."
@@ -1988,6 +2061,8 @@ since `defvar-keymap' and `defface' keep existing values."
     (switchboard-magit "Magit status for its worktree")
     (switchboard-filter "Filter the list; empty clears it")
     (switchboard-fold "Fold or unfold the group at point")
+    (switchboard-move-group-up "Move its group up the list")
+    (switchboard-move-group-down "Move its group down the list")
     (switchboard-toggle-grouping "Group by project or by status")
     (switchboard-toggle-compact "One- or two-line rows")
     (switchboard-refresh "Redraw")
