@@ -127,7 +127,7 @@ nil notifies once."
   '((((background light)) :background "#ffe58a") (t :background "#4d3f00"))
   "Background of the focused window's header, and of the selected row in the list.")
 (defface switchboard-sidebar
-  '((((background light)) :background "#f2f2f2") (t :background "#1e1e1e"))
+  '((((background light)) :background "#f2f2f2" :extend t) (t :background "#1e1e1e" :extend t))
   "Background of the session list.")
 
 
@@ -965,7 +965,9 @@ Claude sessions continue their conversation; Codex resumes its last one."
 
 (defun switchboard--font-size ()
   "Pixel size of the list's main text: 85% of the default font."
-  (round (* 0.85 (or (ignore-errors (aref (font-info (face-font 'default)) 2)) 19))))
+  ;; Outside the list, whose own text is half size (`switchboard-list-mode').
+  (with-temp-buffer
+    (round (* 0.85 (or (ignore-errors (aref (font-info (face-font 'default)) 2)) 19)))))
 
 (defun switchboard--color (face &optional background)
   (or (if background (face-background face nil t) (face-foreground face nil t))
@@ -1069,6 +1071,26 @@ Claude sessions continue their conversation; Codex resumes its last one."
                            :text-anchor "end")
     (setq x (- x (switchboard--text-width (car part) size) 4))))
 
+(defun switchboard--row-tint (s pal)
+  "The background S's status gives its row."
+  (let ((status (switchboard-session-status s)))
+    (if (memq status '(waiting error stopped working ready))
+        (switchboard--color (intern (format "switchboard-row-%s" status)) t)
+      (plist-get pal :bg))))
+
+(defun switchboard--on-screen-p (s)
+  (and (buffer-live-p (switchboard-session-buffer s))
+       (get-buffer-window (switchboard-session-buffer s) t)))
+
+(defun switchboard--eol (face)
+  "A newline that paints the rest of its line in FACE, an :extend face.
+Emacs never draws text in a window's last column (it keeps it for the `$'
+of a cut-off line), and leaves it the frame's background: white, beside
+a grey list.  A newline that starts before that column is drawn, though,
+and its face extends to the window's edge; so rows stop a column and a
+pixel short of the edge, and end with this."
+  (propertize "\n" 'face face))
+
 (defun switchboard--row (s index width selected pal)
   "Image for S's row, WIDTH pixels wide.
 SELECTED is `focused' on point's row, which highlights it whichever window
@@ -1091,26 +1113,22 @@ has focus; another session on screen (in a split) only gets an outline."
          (tokens-x (- age-x (switchboard--text-width "00m" small) 8))
          (badge-x (- tokens-x (switchboard--text-width "000k" small) 10
                      (+ 8 (switchboard--text-width "cc" small))))
-         (shown (and (buffer-live-p (switchboard-session-buffer s))
-                     (get-buffer-window (switchboard-session-buffer s) t)))
+         (shown (switchboard--on-screen-p s))
          (name-face (cond ((memq status '(waiting error stopped)) color)
                           (t (plist-get pal :fg))))
          (svg (svg-create width h)))
-    ;; Each status tints its row.  An outlined row (point's, or one on screen)
-    ;; is a rounded card on the plain background, so its tint can't show at
-    ;; the corners.  Point's card is yellow, like the focused header.
-    (let* ((tint-face (and (memq status '(waiting error stopped working ready))
-                           (intern (format "switchboard-row-%s" status))))
-           (tint (if tint-face (switchboard--color tint-face t) (plist-get pal :bg)))
-           (focused (eq selected 'focused)))
-      (svg-rectangle svg 0 0 width h :fill (if (or focused shown) (plist-get pal :bg) tint))
-      (when (or focused shown)
-        (let ((inset (if focused 2 1.5)))
-          (svg-rectangle svg (+ 7 inset) inset (- width 10 inset) (- h inset inset) :rx 4
-                         :fill (if focused
-                                   (switchboard--color 'switchboard-header-focused t)
-                                 tint)
-                         :stroke (plist-get pal :blue) :stroke-width (if focused 2 1)))))
+    ;; Each row is a rounded card in its status's tint, on the plain
+    ;; background; point's is yellow, like the focused header, and outlined,
+    ;; and one on screen gets a thin outline.
+    (let* ((focused (eq selected 'focused))
+           (inset (if focused 2 1.5)))
+      (svg-rectangle svg 0 0 width h :fill (plist-get pal :bg))
+      (apply #'svg-rectangle svg (+ 7 inset) inset (- width 10 inset) (- h inset inset) :rx 4
+             :fill (if focused
+                       (switchboard--color 'switchboard-header-focused t)
+                     (switchboard--row-tint s pal))
+             (and (or focused shown)
+                  (list :stroke (plist-get pal :blue) :stroke-width (if focused 2 1)))))
     (svg-rectangle svg 0 0 5 h :fill color)
     (when (<= index 9)
       (switchboard--svg-text svg (number-to-string index) 16 y1 small (plist-get pal :dim)))
@@ -1302,8 +1320,10 @@ FOCUSED means its window is selected."
       (with-current-buffer buf
         (let* ((inhibit-read-only t)
                (win (get-buffer-window buf t))
-               (width (if win (window-body-width win t)
-                        (* switchboard-sidebar-width (frame-char-width))))
+               (width (- (if win (window-body-width win t)
+                           (* switchboard-sidebar-width (frame-char-width)))
+                         (default-font-width) 1)) ; see `switchboard--eol'
+               (bg 'switchboard-sidebar)
                (visible (switchboard--visible))
                (at (get-text-property (point) 'switchboard-session))
                ;; Point can rest on a group's header, to fold or unfold it.
@@ -1318,22 +1338,23 @@ FOCUSED means its window is selected."
           (erase-buffer)
           (when waiting
             (insert (propertize (switchboard--banner waiting width pal) 'switchboard-banner t)
-                    "\n"))
+                    (switchboard--eol bg)))
           (unless switchboard--sessions
-            (insert (propertize "\n  c starts a session.\n" 'face 'shadow)))
+            (insert (propertize "\n  c starts a session.\n"
+                                'face '(:inherit shadow :height 2.0)))) ; full size
           (pcase-dolist (`(,key ,title . ,members) (switchboard--groups))
             (insert (propertize (switchboard--group-row title (length members)
                                                         (member key switchboard--folded) width pal
                                                         (equal key at-group))
                                 'switchboard-group key)
-                    "\n")
+                    (switchboard--eol bg))
             (dolist (s members)
               (when (switchboard--shown-p key s)
                 (insert (propertize (switchboard--row s (cl-incf index) width
                                                      (and (eq s selected) 'focused)
                                                      pal)
                                     'switchboard-session s)
-                        "\n"))))
+                        (switchboard--eol bg)))))
           (goto-char (point-min))
           (when-let* ((m (cond (at-group
                                 (text-property-search-forward 'switchboard-group at-group #'equal))
@@ -1410,11 +1431,21 @@ FOCUSED means its window is selected."
               ;; Evil would bring back its box cursor, which draws a second
               ;; border around the row's image.  (nil) means no cursor to it.
               evil-emacs-state-cursor '(nil)
+              ;; No fringes, so the rows reach the window's edges.
+              left-fringe-width 0
+              right-fringe-width 0
+              ;; The list draws its own selection; hl-line would paint the
+              ;; end of the selected row's line.  Global hl-line takes the
+              ;; buffers this matches (Doom has it match special modes).
+              global-hl-line-buffers nil
               line-spacing 0
               ;; None, so its bottom lines up with the terminal's, which has none.
               mode-line-format nil
               header-line-format '(:eval switchboard--header-image))
-  (face-remap-add-relative 'default 'switchboard-sidebar)
+  ;; Half-size text: the list is images, and Emacs keeps a window's last
+  ;; column (see `switchboard--eol') a character wide, so a smaller one
+  ;; leaves less of a gap at the rows' right.
+  (face-remap-add-relative 'default 'switchboard-sidebar '(:height 0.5))
   (face-remap-add-relative 'header-line 'switchboard-sidebar '(:box nil :underline nil))
   (face-remap-add-relative 'fringe 'switchboard-sidebar)
   (add-hook 'post-command-hook #'switchboard--follow-point nil t))
@@ -1436,6 +1467,7 @@ FOCUSED means its window is selected."
                 (preserve-size . (t . nil))
                 (window-parameters . ((no-delete-other-windows . t)))))))
     (set-window-dedicated-p win t)
+    (set-window-fringes win 0 0)
     (unless switchboard--tick-timer
       (setq switchboard--tick-timer (run-at-time 0.5 0.5 #'switchboard--tick)))
     (switchboard--render)
