@@ -120,6 +120,9 @@ nil notifies once."
 (defface switchboard-row-stopped
   '((((background light)) :background "#f5ecc8" :extend t) (t :background "#2e2a10" :extend t))
   "Row background for stopped sessions.")
+(defface switchboard-header-focused
+  '((((background light)) :background "#ffe58a") (t :background "#4d3f00"))
+  "Background of a header (the list's or a terminal's) while its window has focus.")
 (defface switchboard-sidebar
   '((((background light)) :background "#f2f2f2") (t :background "#1e1e1e"))
   "Background of the session list.")
@@ -751,7 +754,12 @@ Called by switchboard-hook.sh through emacsclient."
       (setf (switchboard-session-unread s) nil)
       (switchboard--schedule-render))))
 
+(defun switchboard--on-select (&rest _)
+  "Redraw so the headers and the list's selection show where focus is."
+  (when switchboard--sessions (switchboard--schedule-render)))
+
 (add-hook 'window-selection-change-functions #'switchboard--mark-seen)
+(add-hook 'window-selection-change-functions #'switchboard--on-select)
 (defun switchboard--on-resize (_frame)
   (when switchboard--sessions (switchboard--schedule-render)))
 
@@ -1035,7 +1043,9 @@ Claude sessions continue their conversation; Codex resumes its last one."
     (setq x (- x (switchboard--text-width (car part) size) 4))))
 
 (defun switchboard--row (s index width selected pal)
-  "Image for S's row, WIDTH pixels wide; SELECTED is point's row."
+  "Image for S's row, WIDTH pixels wide.
+SELECTED is non-nil on point's row: `focused' when the list's window is
+selected, which highlights it, and t otherwise, which only outlines it."
   (let* ((fs (switchboard--font-size))
          (small (round (* 0.74 fs)))
          (sub (round (* 0.8 fs)))
@@ -1059,14 +1069,19 @@ Claude sessions continue their conversation; Codex resumes its last one."
          (name-face (cond ((memq status '(waiting error stopped)) color)
                           (t (plist-get pal :fg))))
          (svg (svg-create width h)))
-    (svg-rectangle svg 0 0 width h
-                   :fill (cond (selected (plist-get pal :hl))
-                               ((memq status '(waiting error stopped working ready))
-                                (switchboard--color (intern (format "switchboard-row-%s" status)) t))
-                               (t (plist-get pal :bg))))
-    (when shown
-      (svg-rectangle svg 8.5 1.5 (- width 11) (- h 3) :rx 4
-                     :fill "none" :stroke (plist-get pal :blue) :stroke-width 1))
+    ;; An outlined row (point's, with the list focused, or one on screen) is a
+    ;; rounded card on the plain background, so its tint can't show at the
+    ;; corners; the others are tinted edge to edge.
+    (let ((tint (if (memq status '(waiting error stopped working ready))
+                    (switchboard--color (intern (format "switchboard-row-%s" status)) t)
+                  (plist-get pal :bg)))
+          (focused (eq selected 'focused)))
+      (svg-rectangle svg 0 0 width h :fill (if (or focused shown) (plist-get pal :bg) tint))
+      (when (or focused shown)
+        (let ((inset (if focused 2 1.5)))
+          (svg-rectangle svg (+ 7 inset) inset (- width 10 inset) (- h inset inset) :rx 4
+                         :fill (if focused (plist-get pal :hl) tint)
+                         :stroke (plist-get pal :blue) :stroke-width (if focused 2 1)))))
     (svg-rectangle svg 0 0 5 h :fill color)
     (when (<= index 9)
       (switchboard--svg-text svg (number-to-string index) 16 y1 small (plist-get pal :dim)))
@@ -1141,8 +1156,9 @@ Claude sessions continue their conversation; Codex resumes its last one."
                            (round (* 0.85 size)) color :text-anchor "end" :opacity 0.7)
     (switchboard--image svg)))
 
-(defun switchboard--header (width pal)
-  "Header pills: one per non-empty state, short labels if long ones don't fit."
+(defun switchboard--header (width pal &optional focused)
+  "Header pills: one per non-empty state, short labels if long ones don't fit.
+FOCUSED means the list's window is selected."
   (let* ((fs (switchboard--font-size))
          (size (round (* 0.76 fs)))
          (h (round (* 1.9 fs)))
@@ -1165,7 +1181,9 @@ Claude sessions continue their conversation; Codex resumes its last one."
                    width))
          (svg (svg-create width h))
          (x 8))
-    (svg-rectangle svg 0 0 width h :fill (plist-get pal :bg))
+    (svg-rectangle svg 0 0 width h :fill (if focused
+                                             (switchboard--color 'switchboard-header-focused t)
+                                           (plist-get pal :bg)))
     (svg-line svg 0 (- h 0.5) width (- h 0.5) :stroke (plist-get pal :dim) :stroke-opacity 0.25)
     (if (null pills)
         (switchboard--svg-text svg "No sessions" x (+ (/ h 2.0) (* 0.35 size)) size
@@ -1182,10 +1200,12 @@ Claude sessions continue their conversation; Codex resumes its last one."
       (when (or switchboard--filter (<= (+ x (switchboard--text-width hint size) 8) width))
         (switchboard--svg-text svg hint (- width 8) (+ (/ h 2.0) (* 0.35 size)) size
                                (plist-get pal :dim) :text-anchor "end")))
+    (switchboard--draw-focus svg width h focused (plist-get pal :bg) pal)
     (switchboard--image svg)))
 
-(defun switchboard--terminal-header (s width pal)
-  "Header for S's terminal: status square, name, tag, state, branch and path."
+(defun switchboard--terminal-header (s width pal &optional focused)
+  "Header for S's terminal: status square, name, tag, state, branch and path.
+FOCUSED means its window is selected."
   (let* ((fs (switchboard--font-size))
          (size (round (* 0.78 fs)))
          (h (round (* 1.9 fs)))
@@ -1193,7 +1213,9 @@ Claude sessions continue their conversation; Codex resumes its last one."
          (chip-h (round (* 1.15 fs)))
          (svg (svg-create width h))
          (x 10))
-    (svg-rectangle svg 0 0 width h :fill (plist-get pal :paper))
+    (svg-rectangle svg 0 0 width h :fill (if focused
+                                             (switchboard--color 'switchboard-header-focused t)
+                                           (plist-get pal :paper)))
     (svg-line svg 0 (- h 0.5) width (- h 0.5) :stroke (plist-get pal :dim) :stroke-opacity 0.25)
     (switchboard--draw-chip svg s x (/ (- h chip-h) 2) (round (* 1.55 fs)) chip-h pal)
     (setq x (+ x (round (* 1.55 fs)) 10))
@@ -1210,7 +1232,18 @@ Claude sessions continue their conversation; Codex resumes its last one."
                                         (abbreviate-file-name (switchboard-session-dir s)))
                                 size (- width x 10))
                            x y size (plist-get pal :dim))
+    (switchboard--draw-focus svg width h focused (plist-get pal :paper) pal)
     (switchboard--image svg)))
+
+(defun switchboard--draw-focus (svg width h focused fill pal)
+  "Mark a header WIDTH by H as FOCUSED with a blue bar, or dim it under FILL."
+  (if focused
+      (svg-rectangle svg 0 (- h 2) width 2 :fill (plist-get pal :blue))
+    (svg-rectangle svg 0 0 width h :fill fill :fill-opacity 0.45)))
+
+(defun switchboard--header-width (win)
+  "Pixels a header image needs to span WIN's header line, fringes included."
+  (- (window-pixel-width win) (window-right-divider-width win) (window-scroll-bar-width win)))
 
 (defun switchboard--update-terminal-headers (pal)
   (dolist (s switchboard--sessions)
@@ -1220,7 +1253,8 @@ Claude sessions continue their conversation; Codex resumes its last one."
         (with-current-buffer buf
           (setq switchboard--terminal-header-image
                 (switchboard--terminal-header
-                 s (if win (window-body-width win t) 1200) pal))
+                 s (if win (switchboard--header-width win) 1200) pal
+                 (and win (eq win (selected-window)))))
           (when win (force-mode-line-update)))))))
 
 (defvar-local switchboard--drawn-selection nil
@@ -1239,10 +1273,12 @@ Claude sessions continue their conversation; Codex resumes its last one."
                (visible (switchboard--visible))
                (at (get-text-property (point) 'switchboard-session))
                (selected (if (memq at visible) at (car visible)))
+               (focused (and win (eq win (selected-window))))
                (waiting (cl-remove-if-not (lambda (s) (eq (switchboard-session-status s) 'waiting))
                                           switchboard--sessions))
                (index 0))
-          (setq switchboard--header-image (switchboard--header width pal))
+          (setq switchboard--header-image
+                (switchboard--header (if win (switchboard--header-width win) width) pal focused))
           (erase-buffer)
           (when waiting
             (insert (propertize (switchboard--banner waiting width pal) 'switchboard-banner t)
@@ -1256,7 +1292,9 @@ Claude sessions continue their conversation; Codex resumes its last one."
                     "\n")
             (dolist (s members)
               (when (switchboard--shown-p key s)
-                (insert (propertize (switchboard--row s (cl-incf index) width (eq s selected) pal)
+                (insert (propertize (switchboard--row s (cl-incf index) width
+                                                     (and (eq s selected) (if focused 'focused t))
+                                                     pal)
                                     'switchboard-session s)
                         "\n"))))
           (goto-char (point-min))
@@ -1321,6 +1359,9 @@ Claude sessions continue their conversation; Codex resumes its last one."
 \\{switchboard-list-mode-map}"
   (setq-local truncate-lines t
               cursor-type nil
+              ;; Evil would bring back its box cursor, which draws a second
+              ;; border around the row's image.  (nil) means no cursor to it.
+              evil-emacs-state-cursor '(nil)
               line-spacing 0
               ;; None, so its bottom lines up with the terminal's, which has none.
               mode-line-format nil
