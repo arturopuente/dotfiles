@@ -1112,12 +1112,13 @@ pixel short of the edge, and end with this."
 SELECTED is `focused' on point's row, which highlights it whichever window
 has focus; another session on screen (in a split) only gets an outline."
   (let* ((fs (switchboard--font-size))
-         (small (round (* 0.74 fs)))
-         (sub (round (* 0.8 fs)))
+         ;; Details and the second line as big as the name, as in the prototype.
+         (small fs)
+         (sub fs)
          (status (switchboard-session-status s))
          (color (switchboard--color (switchboard--face s)))
          (l1 (round (* 1.6 fs)))
-         (l2 (if switchboard-compact 0 (round (* 1.25 fs))))
+         (l2 (if switchboard-compact 0 (round (* 1.45 fs))))
          (h (+ l1 l2 (if switchboard-compact 2 6)))
          (y1 (+ 2 (/ (+ l1 (* 0.7 fs)) 2)))
          (y2 (+ l1 (/ (+ l2 (* 0.7 sub)) 2)))
@@ -1195,8 +1196,8 @@ has focus; another session on screen (in a split) only gets an outline."
 (defun switchboard--recent-row (entry width pal &optional selected)
   "One dim line for a closed session ENTRY; SELECTED when point is on it."
   (let* ((fs (switchboard--font-size))
-         (small (round (* 0.8 fs)))
-         (h (round (* 1.5 fs)))
+         (small fs)
+         (h (round (* 1.7 fs)))
          (y (+ (/ h 2.0) (* 0.35 fs)))
          (ago (switchboard--ago (plist-get entry :closed)))
          (project (file-name-nondirectory (directory-file-name (plist-get entry :root))))
@@ -1224,26 +1225,27 @@ has focus; another session on screen (in a split) only gets an outline."
 (defun switchboard--group-row (title count folded width pal &optional selected)
   "Image for a group's header; SELECTED when point is on it."
   (let* ((fs (switchboard--font-size))
-         (h (round (* 1.7 fs)))
-         (y (- h (round (* 0.45 fs))))
+         (title-size (round (* 1.15 fs)))   ; a heading, a bit over the rows' text
+         (h (round (* 2.0 fs)))
+         (y (- h (round (* 0.5 fs))))
          (svg (svg-create width h)))
     (svg-rectangle svg 0 0 width h :fill (plist-get pal :bg))
     (when selected                      ; the same yellow card as a session's
       (svg-rectangle svg 4 2 (- width 7) (- h 4) :rx 4
                      :fill (switchboard--color 'switchboard-header-focused t)
                      :stroke (plist-get pal :blue) :stroke-width 2))
-    (switchboard--svg-text svg (if folded "▸" "▾") 10 y (round (* 0.8 fs)) (plist-get pal :fg))
-    (switchboard--svg-text svg title 26 y fs (plist-get pal :fg) :font-weight "bold")
+    (switchboard--svg-text svg (if folded "▸" "▾") 10 y fs (plist-get pal :fg))
+    (switchboard--svg-text svg title 28 y title-size (plist-get pal :fg) :font-weight "bold")
     (switchboard--svg-text svg (number-to-string count)
-                           (+ 26 (switchboard--text-width title fs) 8) y
-                           (round (* 0.8 fs)) (plist-get pal :dim))
+                           (+ 28 (switchboard--text-width title title-size) 10) y
+                           fs (plist-get pal :dim))
     (switchboard--image svg)))
 
 (defun switchboard--banner (waiting width pal)
   "The inset pill naming the sessions that need you."
   (let* ((fs (switchboard--font-size))
-         (size (round (* 0.82 fs)))
-         (h (round (* 2.1 fs)))
+         (size fs)
+         (h (round (* 2.4 fs)))
          (color (switchboard--color 'switchboard-waiting))
          (svg (svg-create width h)))
     (svg-rectangle svg 0 0 width h :fill (plist-get pal :bg))
@@ -1258,15 +1260,15 @@ has focus; another session on screen (in a split) only gets an outline."
                             size (- width 60))
                            14 (+ (/ h 2.0) (* 0.35 size)) size color)
     (switchboard--svg-text svg "M-n" (- width 14) (+ (/ h 2.0) (* 0.35 size))
-                           (round (* 0.85 size)) color :text-anchor "end" :opacity 0.7)
+                           size color :text-anchor "end" :opacity 0.7)
     (switchboard--image svg)))
 
 (defun switchboard--header (width pal &optional focused)
   "Header pills: one per non-empty state, short labels if long ones don't fit.
 FOCUSED means the list's window is selected."
   (let* ((fs (switchboard--font-size))
-         (size (round (* 0.76 fs)))
-         (h (round (* 1.9 fs)))
+         (size fs)
+         (h (round (* 2.2 fs)))
          (count (lambda (key) (cl-count key switchboard--sessions :key #'switchboard--status-key)))
          (pills (delq nil
                       (mapcar (pcase-lambda (`(,n ,face ,long ,short))
