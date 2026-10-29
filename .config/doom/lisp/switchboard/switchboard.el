@@ -1044,8 +1044,8 @@ Claude sessions continue their conversation; Codex resumes its last one."
 
 (defun switchboard--row (s index width selected pal)
   "Image for S's row, WIDTH pixels wide.
-SELECTED is non-nil on point's row: `focused' when the list's window is
-selected, which highlights it, and t otherwise, which only outlines it."
+SELECTED is `focused' on point's row, which highlights it whichever window
+has focus; another session on screen (in a split) only gets an outline."
   (let* ((fs (switchboard--font-size))
          (small (round (* 0.74 fs)))
          (sub (round (* 0.8 fs)))
@@ -1293,7 +1293,7 @@ FOCUSED means its window is selected."
             (dolist (s members)
               (when (switchboard--shown-p key s)
                 (insert (propertize (switchboard--row s (cl-incf index) width
-                                                     (and (eq s selected) (if focused 'focused t))
+                                                     (and (eq s selected) 'focused)
                                                      pal)
                                     'switchboard-session s)
                         "\n"))))
