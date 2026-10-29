@@ -362,6 +362,23 @@ This command does not push text to `kill-ring'."
         :i "M-DEL"         #'ghostel--send-event
         :i "s-<backspace>" (cmd! (ghostel-send-string "\C-u"))))
 
+;; Terminals look like Ghostty: its Monokai Pro Light Sun colors, and its
+;; 22px rows for Berkeley Mono 18, where Emacs gives 21. These are ghostel's
+;; own faces, so the rest of Emacs keeps its theme.
+(setq-hook! 'ghostel-mode-hook line-spacing 1)
+(after! ghostel
+  (set-face-attribute 'ghostel-default nil :foreground "#2c232e" :background "#f8efe7")
+  (cl-loop for (face . color)
+           in '((black . "#f8efe7") (red . "#ce4770") (green . "#218871")
+                (yellow . "#b16803") (blue . "#d4572b") (magenta . "#6851a2")
+                (cyan . "#2473b6") (white . "#2c232e") (bright-black . "#a59c9c")
+                (bright-red . "#ce4770") (bright-green . "#218871")
+                (bright-yellow . "#b16803") (bright-blue . "#d4572b")
+                (bright-magenta . "#6851a2") (bright-cyan . "#2473b6")
+                (bright-white . "#2c232e"))
+           do (set-face-attribute (intern (format "ghostel-color-%s" face)) nil
+                                  :foreground color)))
+
 (map! :leader
       (:prefix ("e" . "agents")
        :desc "Session list"         "e" #'switchboard
