@@ -803,13 +803,29 @@ Called by switchboard-hook.sh through emacsclient."
   (make-directory (file-name-directory switchboard-save-file) t)
   (with-temp-file switchboard-save-file
     (let ((print-length nil) (print-level nil))
-      (prin1 (mapcar (lambda (s)
-                       (mapcan (lambda (slot)
-                                 (list (intern (format ":%s" slot))
-                                       (cl-struct-slot-value 'switchboard-session slot s)))
-                               switchboard--saved-slots))
-                     switchboard--sessions)
-             (current-buffer)))))
+      (prin1 (mapcar #'switchboard--plist switchboard--sessions) (current-buffer)))))
+
+(defun switchboard--plist (s)
+  "S's `switchboard--saved-slots' as a plist, which makes it again."
+  (mapcan (lambda (slot)
+            (list (intern (format ":%s" slot))
+                  (cl-struct-slot-value 'switchboard-session slot s)))
+          switchboard--saved-slots))
+
+(defvar switchboard--recent nil
+  "The last sessions you killed, newest first: their plists, with :closed.")
+
+(defconst switchboard--recent-max 10)
+
+(with-eval-after-load 'savehist
+  (add-to-list 'savehist-additional-variables 'switchboard--recent))
+
+(defun switchboard--remember-closed (s)
+  (setq switchboard--recent
+        (seq-take (cons (append (list :closed (float-time)) (switchboard--plist s))
+                        (cl-remove (switchboard-session-id s) switchboard--recent
+                                   :key (lambda (e) (plist-get e :id)) :test #'equal))
+                  switchboard--recent-max)))
 
 (defun switchboard--save-soon ()
   (unless switchboard--save-timer
@@ -1169,6 +1185,42 @@ has focus; another session on screen (in a split) only gets an outline."
         (switchboard--draw-changes svg s age-x y2 small)))
     (switchboard--image svg)))
 
+(defun switchboard--ago (time)
+  (let ((sec (floor (- (float-time) time))))
+    (cond ((< sec 60) "just now")
+          ((< sec 3600) (format "%dm ago" (/ sec 60)))
+          ((< sec 86400) (format "%dh ago" (/ sec 3600)))
+          (t (format "%dd ago" (/ sec 86400))))))
+
+(defun switchboard--recent-row (entry width pal &optional selected)
+  "One dim line for a closed session ENTRY; SELECTED when point is on it."
+  (let* ((fs (switchboard--font-size))
+         (small (round (* 0.8 fs)))
+         (h (round (* 1.5 fs)))
+         (y (+ (/ h 2.0) (* 0.35 fs)))
+         (ago (switchboard--ago (plist-get entry :closed)))
+         (project (file-name-nondirectory (directory-file-name (plist-get entry :root))))
+         (title (or (plist-get entry :title) (plist-get entry :name)))
+         (gone (not (file-directory-p (plist-get entry :dir))))
+         (svg (svg-create width h)))
+    (svg-rectangle svg 0 0 width h :fill (plist-get pal :bg))
+    (when selected
+      (svg-rectangle svg 9 2 (- width 12) (- h 4) :rx 4
+                     :fill (switchboard--color 'switchboard-header-focused t)
+                     :stroke (plist-get pal :blue) :stroke-width 2))
+    (let* ((right (- width 10 (switchboard--text-width ago small)))
+           (meta (concat project (if gone ", folder gone" "")))
+           (meta-w (+ 12 (switchboard--text-width meta small)))
+           (name-w (- right 37 meta-w 12)))
+      (switchboard--svg-text svg "↺" 20 y small (plist-get pal :dim))
+      (switchboard--svg-text svg (switchboard--clip title fs name-w) 37 y fs
+                             (if selected (plist-get pal :fg) (plist-get pal :dim)))
+      (switchboard--svg-text svg meta (- right 12) y small (plist-get pal :dim)
+                             :text-anchor "end")
+      (switchboard--svg-text svg ago (- width 10) y small (plist-get pal :dim)
+                             :text-anchor "end"))
+    (switchboard--image svg)))
+
 (defun switchboard--group-row (title count folded width pal &optional selected)
   "Image for a group's header; SELECTED when point is on it."
   (let* ((fs (switchboard--font-size))
@@ -1328,7 +1380,10 @@ FOCUSED means its window is selected."
                (at (get-text-property (point) 'switchboard-session))
                ;; Point can rest on a group's header, to fold or unfold it.
                (at-group (and (not at) (get-text-property (point) 'switchboard-group)))
-               (selected (cond (at-group nil) ((memq at visible) at) (t (car visible))))
+               (at-closed (and (not at) (get-text-property (point) 'switchboard-recent)))
+               (selected (cond ((or at-group at-closed) nil)
+                               ((memq at visible) at)
+                               (t (car visible))))
                (focused (and win (eq win (selected-window))))
                (waiting (cl-remove-if-not (lambda (s) (eq (switchboard-session-status s) 'waiting))
                                           switchboard--sessions))
@@ -1355,20 +1410,34 @@ FOCUSED means its window is selected."
                                                      pal)
                                     'switchboard-session s)
                         (switchboard--eol bg)))))
+          (when switchboard--recent
+            (insert (propertize (switchboard--group-row "Recently closed" (length switchboard--recent)
+                                                        (memq 'recent switchboard--folded) width pal
+                                                        (eq at-group 'recent))
+                                'switchboard-group 'recent)
+                    (switchboard--eol bg))
+            (unless (memq 'recent switchboard--folded)
+              (dolist (entry switchboard--recent)
+                (insert (propertize (switchboard--recent-row entry width pal (eq entry at-closed))
+                                    'switchboard-recent entry)
+                        (switchboard--eol bg)))))
           (goto-char (point-min))
           (when-let* ((m (cond (at-group
                                 (text-property-search-forward 'switchboard-group at-group #'equal))
+                               (at-closed
+                                (text-property-search-forward 'switchboard-recent at-closed #'eq))
                                (selected
                                 (text-property-search-forward 'switchboard-session selected #'eq)))))
             (goto-char (prop-match-beginning m)))
-          (setq switchboard--drawn-selection (or selected at-group))
+          (setq switchboard--drawn-selection (or selected at-group at-closed))
           (when win (set-window-point win (point)))
           (force-mode-line-update))))))
 
 (defun switchboard--row-key ()
-  "The session, or group key, of the row at point."
+  "The session, group key or closed session's entry of the row at point."
   (or (get-text-property (point) 'switchboard-session)
-      (get-text-property (point) 'switchboard-group)))
+      (get-text-property (point) 'switchboard-group)
+      (get-text-property (point) 'switchboard-recent)))
 
 (defun switchboard--follow-point ()
   "Redraw when point lands on a different row, to move the highlight."
@@ -1618,8 +1687,10 @@ session it maximizes the window instead (`doom/window-maximize-buffer')."
 
 ;;; Commands
 
-(defun switchboard--at-point ()
+(defun switchboard--at-point (&optional or-closed)
+  "The session on this line, or with OR-CLOSED a recently closed one's entry."
   (or (get-text-property (point) 'switchboard-session)
+      (and or-closed (get-text-property (point) 'switchboard-recent))
       (user-error "No session on this line")))
 
 (defun switchboard--main-window ()
@@ -1667,11 +1738,11 @@ last rows; this puts it right whenever you switch to it."
       (ghostel--anchor-window win t))))
 
 (defun switchboard-open (s)
-  "Show session S and select its terminal."
-  (interactive (list (switchboard--at-point)))
-  (if (buffer-live-p (switchboard-session-buffer s))
-      (switchboard--show s t)
-    (user-error "%s has no buffer; r resumes it" (switchboard--title s))))
+  "Show session S and select its terminal; reopen it if it was closed."
+  (interactive (list (switchboard--at-point t)))
+  (cond ((not (switchboard-session-p s)) (switchboard-reopen s))
+        ((buffer-live-p (switchboard-session-buffer s)) (switchboard--show s t))
+        (t (user-error "%s has no buffer; r resumes it" (switchboard--title s)))))
 
 (defun switchboard-peek (s)
   "Show session S without leaving the list."
@@ -1711,6 +1782,8 @@ the next one in the same window. Anywhere else it is `next-buffer'."
   (mouse-set-point event)
   (cond ((get-text-property (point) 'switchboard-session)
          (switchboard-open (get-text-property (point) 'switchboard-session)))
+        ((get-text-property (point) 'switchboard-recent)
+         (switchboard-reopen (get-text-property (point) 'switchboard-recent)))
         ((get-text-property (point) 'switchboard-group) (switchboard-fold))
         ((get-text-property (point) 'switchboard-banner) (switchboard-next-attention))))
 
@@ -1826,21 +1899,43 @@ An empty NAME hands naming back to Claude."
 If it had its own worktree, merged and with nothing uncommitted, offer
 to remove that and its branch too; otherwise they're kept, for
 `switchboard-prune-worktrees' to clear later."
-  (interactive (list (switchboard--at-point)))
-  (when (y-or-n-p (format "Kill %s%s? " (switchboard--title s)
-                          (if (eq (switchboard-session-status s) 'working) " (working!)" "")))
-    (when (buffer-live-p (switchboard-session-buffer s))
-      (let ((kill-buffer-query-functions nil)
-            (ghostel-query-before-killing nil))
-        (kill-buffer (switchboard-session-buffer s))))
-    (when-let* ((buf (get-buffer (switchboard--drawer-name s "shell"))))
-      (let ((kill-buffer-query-functions nil)
-            (ghostel-query-before-killing nil))
-        (kill-buffer buf)))
-    (setq switchboard--sessions (delq s switchboard--sessions))
-    (switchboard--save-soon)
-    (switchboard--render)
-    (switchboard--offer-worktree-removal s)))
+  (interactive (list (switchboard--at-point t)))
+  (if (not (switchboard-session-p s))
+      (switchboard-forget s)
+    (when (y-or-n-p (format "Kill %s%s? " (switchboard--title s)
+                            (if (eq (switchboard-session-status s) 'working) " (working!)" "")))
+      (when (buffer-live-p (switchboard-session-buffer s))
+        (let ((kill-buffer-query-functions nil)
+              (ghostel-query-before-killing nil))
+          (kill-buffer (switchboard-session-buffer s))))
+      (when-let* ((buf (get-buffer (switchboard--drawer-name s "shell"))))
+        (let ((kill-buffer-query-functions nil)
+              (ghostel-query-before-killing nil))
+          (kill-buffer buf)))
+      (setq switchboard--sessions (delq s switchboard--sessions))
+      (switchboard--remember-closed s)
+      (switchboard--save-soon)
+      (switchboard--render)
+      (switchboard--offer-worktree-removal s))))
+
+(defun switchboard-reopen (entry)
+  "Bring back a closed session, ENTRY in the list's recent ones.
+It resumes in its folder, continuing the same conversation."
+  (let ((dir (plist-get entry :dir)))
+    (unless (file-directory-p dir)
+      (user-error "Its folder, %s, is gone" (abbreviate-file-name dir)))
+    (let ((s (apply #'switchboard--session-create :status 'exited
+                    (cl-loop for (k v) on entry by #'cddr
+                             unless (eq k :closed) nconc (list k v)))))
+      (setq switchboard--recent (delq entry switchboard--recent)
+            switchboard--sessions (append switchboard--sessions (list s)))
+      (switchboard--save-soon)
+      (switchboard-resume s))))
+
+(defun switchboard-forget (entry)
+  "Drop ENTRY from the list's recently closed sessions."
+  (setq switchboard--recent (delq entry switchboard--recent))
+  (switchboard--render))
 
 (defun switchboard--offer-worktree-removal (s)
   "After killing S, offer to remove its worktree if nothing would be lost."
@@ -1933,15 +2028,18 @@ worktree or an unmerged branch is only removed once you confirm it."
     (message "Removed %d worktree%s" removed (if (= removed 1) "" "s"))))
 
 (defun switchboard-resume (s)
-  "Restart an exited session S where its conversation left off."
-  (interactive (list (switchboard--at-point)))
-  (when (and (buffer-live-p (switchboard-session-buffer s))
-             (process-live-p (get-buffer-process (switchboard-session-buffer s))))
-    (user-error "%s is still running" (switchboard--title s)))
-  (setf (switchboard-session-detail s) nil)   ; why it exited
-  (switchboard--set s 'ready)
-  (switchboard--update-git s)        ; it may have moved while nothing ran
-  (switchboard--spawn s nil t))
+  "Restart an exited session S where its conversation left off.
+On a recently closed one, reopen it."
+  (interactive (list (switchboard--at-point t)))
+  (if (not (switchboard-session-p s))
+      (switchboard-reopen s)
+    (when (and (buffer-live-p (switchboard-session-buffer s))
+               (process-live-p (get-buffer-process (switchboard-session-buffer s))))
+      (user-error "%s is still running" (switchboard--title s)))
+    (setf (switchboard-session-detail s) nil)   ; why it exited
+    (switchboard--set s 'ready)
+    (switchboard--update-git s)        ; it may have moved while nothing ran
+    (switchboard--spawn s nil t)))
 
 (defun switchboard-magit (s)
   "Open magit-status for S's worktree in the main window."
@@ -1977,6 +2075,9 @@ worktree or an unmerged branch is only removed once you confirm it."
   (interactive "p")
   (unless (eq switchboard--group 'project)
     (user-error "Groups by status keep their order; t groups by project"))
+  (when (or (eq (get-text-property (point) 'switchboard-group) 'recent)
+            (get-text-property (point) 'switchboard-recent))
+    (user-error "Recently closed sessions stay at the bottom"))
   (let* ((key (or (get-text-property (point) 'switchboard-group)
                   (switchboard--project (switchboard--at-point))))
          ;; Every group, not just those the filter shows, so none lose their place.
@@ -2073,7 +2174,7 @@ since `defvar-keymap' and `defface' keep existing values."
   (switchboard--render))
 
 (defconst switchboard--help
-  '((switchboard-open "Open the session at point")
+  '((switchboard-open "Open the session at point, or reopen a closed one")
     (switchboard-peek "Show it without leaving the list")
     (switchboard-jump "Open the Nth listed session")
     (switchboard-next-line "Next row")
@@ -2081,8 +2182,8 @@ since `defvar-keymap' and `defface' keep existing values."
     (switchboard-next-attention "Open the next session that needs you")
     (switchboard-new "Start a new session")
     (switchboard-rename "Rename the session at point")
-    (switchboard-resume "Resume an exited session")
-    (switchboard-kill "Kill it, offering to remove its worktree if merged")
+    (switchboard-resume "Resume an exited session, or reopen a closed one")
+    (switchboard-kill "Kill it (it's listed as recently closed); on a closed one, forget it")
     (switchboard-prune-worktrees "Remove worktrees no session uses")
     (switchboard-mark "Toggle its broadcast mark")
     (switchboard-unmark-all "Clear every broadcast mark")

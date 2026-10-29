@@ -338,6 +338,43 @@ recorded in `switchboard-test--notified'."
                                         (list (funcall mk "e" "/p/docs/"))))
     (should (equal (funcall keys) '("api" "infra" "web" "docs")))))
 
+(ert-deftest switchboard-test-recently-closed ()
+  (switchboard-test--with-session s
+    (let ((switchboard--recent nil)
+          resumed)
+      (cl-letf (((symbol-function 'switchboard--render) #'ignore)
+                ((symbol-function 'switchboard-resume) (lambda (x) (setq resumed x))))
+        ;; At most ten, newest first, each session once.
+        (dotimes (i 12)
+          (switchboard--remember-closed
+           (switchboard--session-create :id (format "s-%d" i) :name "x"
+                                        :root (switchboard-session-root s)
+                                        :dir (switchboard-session-dir s))))
+        (switchboard--remember-closed
+         (switchboard--session-create :id "s-5" :name "again"
+                                      :root (switchboard-session-root s)
+                                      :dir (switchboard-session-dir s)))
+        (should (= (length switchboard--recent) 10))
+        (should (equal (plist-get (car switchboard--recent) :name) "again"))
+        (should (= 1 (cl-count "s-5" switchboard--recent
+                               :key (lambda (e) (plist-get e :id)) :test #'equal)))
+        ;; Reopening makes the session again and takes it off the list.
+        (setf (switchboard-session-resume-id s) "conv-1")
+        (switchboard--remember-closed s)
+        (setq switchboard--sessions nil)
+        (switchboard-reopen (car switchboard--recent))
+        (should (equal (switchboard-session-id resumed) "heron-0001"))
+        (should (equal (switchboard-session-resume-id resumed) "conv-1"))
+        (should (memq resumed switchboard--sessions))
+        (should-not (cl-find "heron-0001" switchboard--recent
+                             :key (lambda (e) (plist-get e :id)) :test #'equal))
+        ;; Not when its folder has gone; x forgets it.
+        (let ((entry (append (list :closed 0 :dir "/no/such/folder/") (cddr (car switchboard--recent)))))
+          (push entry switchboard--recent)
+          (should-error (switchboard-reopen entry) :type 'user-error)
+          (switchboard-forget entry)
+          (should-not (memq entry switchboard--recent)))))))
+
 (ert-deftest switchboard-test-parse-git-handles-binary-files ()
   (should (equal (switchboard--parse-git "sb/heron\n@@\n-\t-\timg.png\n4\t1\ta.el\n@@\n")
                  '("sb/heron" 4 1 0))))
