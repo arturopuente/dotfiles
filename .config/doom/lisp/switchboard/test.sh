@@ -9,5 +9,6 @@ for build in "${EMACSDIR:-$HOME/.config/emacs}"/.local/straight/build-*/; do
   for dir in "$build"*/; do load_path+=(-L "$dir"); done
 done
 
-exec emacs -Q --batch "${load_path[@]}" -L . -l switchboard-test.el \
+# Prefer the .el: Emacs compiles switchboard.elc here, and it can be stale.
+exec emacs -Q --batch --eval '(setq load-prefer-newer t)' "${load_path[@]}" -L . -l switchboard-test.el \
      -f ert-run-tests-batch-and-exit
