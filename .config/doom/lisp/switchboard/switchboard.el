@@ -1804,6 +1804,16 @@ works, and the ages shown."
   (buffer-disable-undo)
   (add-hook 'post-command-hook #'switchboard--follow-point nil t))
 
+(with-eval-after-load 'hl-line
+  ;; Emacs opens on the list before hl-line loads, and Doom then sets its
+  ;; `global-hl-line-buffers' with `setq': run with the list current, that
+  ;; replaced the list's nil, and hl-line painted the column at the rows'
+  ;; right.  Doom's setup was added first, so this runs after it.
+  (dolist (buf (buffer-list))
+    (with-current-buffer buf
+      (when (derived-mode-p 'switchboard-list-mode)
+        (setq-local global-hl-line-buffers nil)))))
+
 (with-eval-after-load 'evil
   (evil-set-initial-state 'switchboard-list-mode 'emacs))
 
