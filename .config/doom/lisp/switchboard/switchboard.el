@@ -1556,6 +1556,9 @@ works, and the ages shown."
   (face-remap-add-relative 'default 'switchboard-sidebar '(:height 0.5))
   (face-remap-add-relative 'header-line 'switchboard-sidebar '(:box nil :underline nil))
   (face-remap-add-relative 'fringe 'switchboard-sidebar)
+  ;; Every redraw erases the rows, and undo would keep each one's SVG data.
+  ;; Undo limits count characters, a row is one, so it grew past a gigabyte.
+  (buffer-disable-undo)
   (add-hook 'post-command-hook #'switchboard--follow-point nil t))
 
 (with-eval-after-load 'evil
