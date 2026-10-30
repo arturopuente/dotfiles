@@ -125,6 +125,12 @@ nil notifies once."
 (defface switchboard-row-stopped
   '((((background light)) :background "#f5ecc8" :extend t) (t :background "#2e2a10" :extend t))
   "Row background for stopped sessions.")
+(defface switchboard-merged
+  '((((background light)) :foreground "#7340c4") (t :foreground "#b69cf7"))
+  "Sessions whose branch's pull request was merged, and the merge icon.")
+(defface switchboard-row-merged
+  '((((background light)) :background "#eee6fa" :extend t) (t :background "#251c38" :extend t))
+  "Row background for sessions whose pull request was merged.")
 (defface switchboard-header-focused
   '((((background light)) :background "#ffe58a") (t :background "#4d3f00"))
   "Background of the focused window's header, and of the selected row in the list.")
@@ -139,7 +145,7 @@ nil notifies once."
 (cl-defstruct (switchboard-session (:constructor switchboard--session-create)
                                    (:copier nil))
   id name title named harness root dir branch buffer
-  (status 'ready) unread marked task detail tokens resume-id transcript changes
+  (status 'ready) unread marked task detail tokens resume-id transcript changes pr
   (changed (float-time)) (turn-start (float-time)))
 
 (defvar switchboard--sessions nil
@@ -650,13 +656,98 @@ A turn can make dozens of edits; this reads git once per burst."
     (when (memq s switchboard--sessions)
       (pcase-let ((`(,branch . ,changes) (switchboard--parse-git output)))
         (when (and branch (not (equal branch (switchboard-session-branch s))))
-          (setf (switchboard-session-branch s) branch)
-          (switchboard--save-soon))
+          ;; The old branch's pull request isn't this one's; the lookup
+          ;; below finds this one's, if any.
+          (setf (switchboard-session-branch s) branch
+                (switchboard-session-pr s) nil)
+          (switchboard--save-soon)
+          (switchboard--schedule-render))
         (unless (equal changes (switchboard-session-changes s))
           (setf (switchboard-session-changes s) changes)
           (switchboard--schedule-render)))
+      (switchboard--update-pr s)
       (when (process-get proc 'again)
         (switchboard--update-git s)))))
+
+(defcustom switchboard-pr-interval 300
+  "Seconds between checks of each session's branch and pull request.
+The pull request can be merged or closed on GitHub, and the branch
+switched in a shell, while no hook event comes.  nil never checks."
+  :type '(choice (const :tag "Never" nil) natnum))
+
+(defvar switchboard--pr-procs (make-hash-table :test 'equal)
+  "Session id to the gh process looking up its branch's pull request.")
+
+(defvar switchboard--pr-checked (make-hash-table :test 'equal)
+  "Session id to (BRANCH . TIME) of its last pull request lookup.")
+
+(defun switchboard--update-pr (s &optional force)
+  "Look up the pull request for S's branch with gh, in the background.
+Not more than once a minute per branch unless FORCE; never for main or
+master, whose pull requests aren't S's."
+  (let* ((id (switchboard-session-id s))
+         (branch (switchboard-session-branch s))
+         (checked (gethash id switchboard--pr-checked)))
+    (cond
+     ((or (null branch) (member branch '("main" "master")))
+      (when (switchboard-session-pr s)
+        (setf (switchboard-session-pr s) nil)
+        (switchboard--schedule-render)))
+     ((or (process-live-p (gethash id switchboard--pr-procs))
+          (not (executable-find "gh"))
+          (not (file-directory-p (switchboard-session-dir s)))
+          (and (not force) (equal (car checked) branch)
+               (< (- (float-time) (cdr checked)) 60))))
+     (t
+      (puthash id (cons branch (float-time)) switchboard--pr-checked)
+      (let ((default-directory (switchboard-session-dir s)))
+        (puthash id
+                 (make-process
+                  :name "switchboard-pr" :noquery t :connection-type 'pipe
+                  :buffer (generate-new-buffer " *switchboard-pr*")
+                  ;; Dropped: a failed lookup only keeps what was known.
+                  :stderr (make-pipe-process :name " *switchboard-pr-stderr*" :noquery t
+                                             :filter #'ignore :sentinel #'ignore)
+                  :command (list "gh" "pr" "list" "--head" branch "--state" "all"
+                                 "--limit" "1" "--json" "number,state,isDraft")
+                  :sentinel (lambda (proc _event)
+                              (unless (process-live-p proc)
+                                (switchboard--pr-done s branch proc))))
+                 switchboard--pr-procs))))))
+
+(defun switchboard--pr-done (s branch proc)
+  (let ((output (with-current-buffer (process-buffer proc) (buffer-string))))
+    (kill-buffer (process-buffer proc))
+    (remhash (switchboard-session-id s) switchboard--pr-procs)
+    ;; A failed lookup (offline, not a GitHub repo) keeps what was known.
+    (when (and (memq s switchboard--sessions)
+               (eq (process-exit-status proc) 0)
+               (equal branch (switchboard-session-branch s)))
+      (let* ((found (car (ignore-errors
+                           (json-parse-string output :object-type 'alist :array-type 'list
+                                              :false-object nil))))
+             (pr (and found
+                      (list :number (alist-get 'number found)
+                            :state (intern (downcase (alist-get 'state found)))
+                            :draft (alist-get 'isDraft found)))))
+        (unless (equal pr (switchboard-session-pr s))
+          (setf (switchboard-session-pr s) pr)
+          (switchboard--save-soon)
+          (switchboard--schedule-render))))))
+
+(defvar switchboard--pr-timer nil)
+
+(defun switchboard--update-prs ()
+  "Re-read every session's branch, and so its pull request.
+Git, not just gh: a branch you switched in a session's shell sends no
+hook event."
+  (dolist (s switchboard--sessions)
+    (switchboard--update-git s)))
+
+(when switchboard--pr-timer (cancel-timer switchboard--pr-timer))
+(setq switchboard--pr-timer
+      (and switchboard-pr-interval
+           (run-with-timer 10 switchboard-pr-interval #'switchboard--update-prs)))
 
 (defun switchboard--parse-git (output)
   "Parse `switchboard--git-script' OUTPUT into (BRANCH . CHANGES).
@@ -796,7 +887,7 @@ Called by switchboard-hook.sh through emacsclient."
   :type 'file)
 
 (defconst switchboard--saved-slots
-  '(id name title named harness root dir branch task resume-id transcript tokens)
+  '(id name title named harness root dir branch task resume-id transcript tokens pr)
   "The session fields worth keeping; status and buffers are not.")
 
 (defvar switchboard--save-timer nil)
@@ -879,24 +970,62 @@ Claude sessions continue their conversation; Codex resumes its last one."
 (defvar switchboard--render-timer nil)
 (defvar switchboard--tick-timer nil)
 
-(defconst switchboard--status-order '(waiting error stopped unread working ready paused exited))
+(defconst switchboard--status-order '(waiting error stopped unread working ready merged paused exited))
 (defconst switchboard--status-titles
   '((waiting . "Needs you") (error . "Errored") (stopped . "Stopped") (unread . "Finished")
-    (working . "Working") (ready . "Ready") (paused . "Paused") (exited . "Exited")))
+    (working . "Working") (ready . "Ready") (merged . "Merged") (paused . "Paused")
+    (exited . "Exited")))
+
+(defun switchboard--pr-state (s)
+  "The state of S's branch's pull request, nil if none.
+One of `open', `draft', `merged' or `closed'."
+  (when-let* ((pr (switchboard-session-pr s)))
+    (if (and (eq (plist-get pr :state) 'open) (plist-get pr :draft))
+        'draft
+      (plist-get pr :state))))
+
+(defun switchboard--shown-status (s)
+  "S's status as the list shows it: `merged' once its pull request is,
+while it's idle; a turn that needs you still shows.  An exited or paused
+session keeps its status, and its label adds MERGED."
+  (let ((status (switchboard-session-status s)))
+    (if (and (eq status 'ready)
+             (not (switchboard-session-unread s))
+             (eq (switchboard--pr-state s) 'merged))
+        'merged
+      status)))
 
 (defun switchboard--status-key (s)
   (if (and (eq (switchboard-session-status s) 'ready) (switchboard-session-unread s))
       'unread
-    (switchboard-session-status s)))
+    (switchboard--shown-status s)))
 
 (defun switchboard--face (s)
-  (intern (format "switchboard-%s" (switchboard-session-status s))))
+  (intern (format "switchboard-%s" (switchboard--shown-status s))))
+
+(defun switchboard--label-parts (s)
+  "S's label as ((TEXT . FACE) ...): its status, and for an exited or
+paused session whose pull request was merged, \" | \" and MERGED too."
+  (let ((status (pcase (switchboard--shown-status s)
+                  ('working "WORKING") ('waiting "NEEDS YOU") ('error "ERROR")
+                  ('stopped "STOPPED") ('paused "PAUSED") ('exited "EXITED") ('merged "MERGED")
+                  (_ (if (switchboard-session-unread s) "READY · NEW" "READY")))))
+    (cons (cons status (switchboard--face s))
+          (and (memq (switchboard-session-status s) '(exited paused))
+               (eq (switchboard--pr-state s) 'merged)
+               '((" | " . shadow) ("MERGED" . switchboard-merged))))))
 
 (defun switchboard--label (s)
-  (pcase (switchboard-session-status s)
-    ('working "WORKING") ('waiting "NEEDS YOU") ('error "ERROR")
-    ('stopped "STOPPED") ('paused "PAUSED") ('exited "EXITED")
-    (_ (if (switchboard-session-unread s) "READY · NEW" "READY"))))
+  (mapconcat #'car (switchboard--label-parts s)))
+
+(defun switchboard--draw-label (svg s x y size)
+  "Draw S's label from X on baseline Y; return its width."
+  (let ((x0 x))
+    (pcase-dolist (`(,text . ,face) (switchboard--label-parts s))
+      (switchboard--svg-text svg text x y size (switchboard--color face)
+                             :font-weight "bold" :letter-spacing "0.06em" :xml:space "preserve")
+      (setq x (+ x (* 1.08 (switchboard--text-width text size)))))
+    (- x x0)))
 
 (defun switchboard--age (s)
   (let ((sec (floor (- (float-time) (switchboard-session-changed s)))))
@@ -1072,7 +1201,7 @@ add up to hundreds of megabytes."
 
 (defun switchboard--draw-chip (svg s x y w h pal)
   "The status square: filled, or outlined for a READY you've seen."
-  (let* ((status (switchboard-session-status s))
+  (let* ((status (switchboard--shown-status s))
          (color (switchboard--color (switchboard--face s)))
          (outline (and (memq status '(ready paused exited)) (not (switchboard-session-unread s))))
          (ink (if outline color (plist-get pal :paper)))
@@ -1105,9 +1234,50 @@ add up to hundreds of megabytes."
          (dolist (bx (list (- cx (* 1.5 bar-w)) (+ cx (* 0.5 bar-w))))
            (svg-rectangle svg bx (- cy (/ bar-h 2)) bar-w bar-h :rx 0.5 :fill color))))
       ('exited (funcall glyph "×"))
+      ('merged (switchboard--draw-pr-icon svg 'merged (- cx (* 0.4 h)) cy (* 0.8 h) ink))
       (_ (if (switchboard-session-unread s)
              (funcall glyph "✓")
            (svg-circle svg cx cy 2 :fill color))))))
+
+(defun switchboard--draw-pr-icon (svg kind x cy size color)
+  "Draw a SIZE-pixel KIND icon at X, centered on CY, in COLOR.
+KIND is `branch', or a pull request's `open', `draft', `merged' or `closed'."
+  (let* ((k (/ size 16.0))
+         (g (svg-node svg 'g :transform (format "translate(%.2f %.2f) scale(%.3f)"
+                                                 x (- cy (/ size 2.0)) k)
+                      :fill "none" :stroke color :stroke-width 1.6
+                      :stroke-linecap "round" :stroke-linejoin "round"))
+         (dot (lambda (cx cy) (svg-circle g cx cy 1.9)))
+         (path (lambda (d &rest props) (apply #'svg-node g 'path :d d props))))
+    (pcase kind
+      ('branch
+       (funcall dot 4.5 3.5) (funcall dot 4.5 12.5) (funcall dot 11.5 4.5)
+       (funcall path "M4.5 5.4 V10.6")
+       (funcall path "M11.5 6.4 C11.5 9.5 4.5 8 4.5 10.6"))
+      ('merged
+       (funcall dot 4.5 3.5) (funcall dot 4.5 12.5) (funcall dot 11.5 9.5)
+       (funcall path "M4.5 5.4 V10.6")
+       (funcall path "M4.5 5.4 C4.5 8.5 7 9.5 9.6 9.5"))
+      (_                                ; a pull request: open, draft or closed
+       (funcall dot 4.5 3.5) (funcall dot 4.5 12.5) (funcall dot 11.5 12.5)
+       (funcall path "M4.5 5.4 V10.6")
+       (pcase kind
+         ('closed (funcall path "M11.5 10.6 V8")
+                  (funcall path "M9.8 2 L13.2 5.4 M13.2 2 L9.8 5.4"))
+         ('draft (funcall path "M11.5 10.6 V5.5" :stroke-dasharray "1.4 2"))
+         (_ (funcall path "M11.5 10.6 V6 Q11.5 3.5 9 3.5 H8.2")
+            (funcall path "M9.8 1.8 L8.1 3.5 L9.8 5.2")))))))
+
+(defun switchboard--draw-branch-icon (svg s x cy size pal)
+  "S's branch icon at X, centered on CY: its pull request's state, colored."
+  (let ((state (switchboard--pr-state s)))
+    (switchboard--draw-pr-icon
+     svg (or state 'branch) x cy size
+     (pcase state
+       ('open (switchboard--color 'switchboard-ready))
+       ('merged (switchboard--color 'switchboard-merged))
+       ('closed (switchboard--color 'switchboard-error))
+       (_ (plist-get pal :dim))))))
 
 (defun switchboard--draw-badge (svg s x y size pal)
   "The cc/cx tag with its left edge at X; return its width."
@@ -1146,8 +1316,8 @@ add up to hundreds of megabytes."
 
 (defun switchboard--row-tint (s pal)
   "The background S's status gives its row."
-  (let ((status (switchboard-session-status s)))
-    (if (memq status '(waiting error stopped working ready))
+  (let ((status (switchboard--shown-status s)))
+    (if (memq status '(waiting error stopped working ready merged))
         (switchboard--color (intern (format "switchboard-row-%s" status)) t)
       (plist-get pal :bg))))
 
@@ -1172,7 +1342,7 @@ has focus; another session on screen (in a split) only gets an outline."
          ;; Details and the second line as big as the name, as in the prototype.
          (small fs)
          (sub fs)
-         (status (switchboard-session-status s))
+         (status (switchboard--shown-status s))
          (color (switchboard--color (switchboard--face s)))
          (l1 (round (* 1.6 fs)))
          (l2 (if switchboard-compact 0 (round (* 1.45 fs))))
@@ -1227,19 +1397,26 @@ has focus; another session on screen (in a split) only gets an outline."
              ;; Not the first prompt: Claude's title for the session says it.
              (text (string-replace "\n" " " (or (switchboard-session-detail s) "")))
              (changes-w (switchboard--changes-width s small))
+             (icon-w (round (* 0.9 small)))
              (branch (and (switchboard-session-branch s)
-                          (switchboard--clip (concat "⎇ " (switchboard-session-branch s))
-                                             small (* (if (string-empty-p text) 1 0.4)
-                                                      (- age-x text-x changes-w)))))
-             (branch-w (+ (if branch (+ (switchboard--text-width branch small) 12) 0)
+                          (switchboard--clip (switchboard-session-branch s)
+                                             small (- (* (if (string-empty-p text) 1 0.4)
+                                                         (- age-x text-x changes-w))
+                                                      icon-w 5))))
+             (branch-w (+ (if branch
+                              (+ icon-w 5 (switchboard--text-width branch small) 12)
+                            0)
                           changes-w)))
-        (switchboard--svg-text svg label name-x y2 small color
-                               :font-weight "bold" :letter-spacing "0.06em")
+        (switchboard--draw-label svg s name-x y2 small)
         (switchboard--svg-text svg (switchboard--clip text sub (- age-x text-x branch-w))
                                text-x y2 sub (plist-get pal :dim))
         (when branch
-          (switchboard--svg-text svg branch (- age-x changes-w) y2 small (plist-get pal :dim)
-                                 :text-anchor "end"))
+          (let ((end (- age-x changes-w)))
+            (switchboard--svg-text svg branch end y2 small (plist-get pal :dim)
+                                   :text-anchor "end")
+            (switchboard--draw-branch-icon
+             svg s (- end (switchboard--text-width branch small) 5 icon-w) (- y2 (* 0.35 small))
+             icon-w pal)))
         (switchboard--draw-changes svg s age-x y2 small)))
     (switchboard--image svg)))
 
@@ -1335,7 +1512,8 @@ FOCUSED means the list's window is selected."
                                 (,(funcall count 'stopped) switchboard-stopped "stopped" "■")
                                 (,(funcall count 'working) switchboard-working "working" "◐")
                                 (,(+ (funcall count 'ready) (funcall count 'unread))
-                                 switchboard-ready "ready" "✓")))))
+                                 switchboard-ready "ready" "✓")
+                                (,(funcall count 'merged) switchboard-merged "merged" "◆")))))
          (label (lambda (p long) (if long (format "%d %s" (car p) (nth 2 p))
                                    (format "%s %d" (nth 3 p) (car p)))))
          (fits (<= (cl-reduce #'+ (mapcar (lambda (p) (+ 16 (switchboard--text-width
@@ -1388,15 +1566,18 @@ FOCUSED means its window is selected."
                            :font-weight "bold")
     (setq x (+ x (switchboard--text-width (switchboard--title s) fs) 10))
     (setq x (+ x (switchboard--draw-badge svg s x y size pal) 12))
-    (let ((label (switchboard--label s)))
-      (switchboard--svg-text svg label x y size (switchboard--color (switchboard--face s))
-                             :font-weight "bold" :letter-spacing "0.06em")
-      (setq x (+ x (* 1.08 (switchboard--text-width label size)) 18)))
-    (switchboard--svg-text svg (switchboard--clip
-                                (format "⎇ %s   %s" (or (switchboard-session-branch s) "")
-                                        (abbreviate-file-name (switchboard-session-dir s)))
-                                size (- width x 10))
-                           x y size (plist-get pal :dim))
+    (setq x (+ x (switchboard--draw-label svg s x y size) 18))
+    (let ((icon-w (round (* 0.9 size)))
+          (pr (switchboard-session-pr s)))
+      (when (switchboard-session-branch s)
+        (switchboard--draw-branch-icon svg s x (- y (* 0.35 size)) icon-w pal)
+        (setq x (+ x icon-w 6)))
+      (switchboard--svg-text svg (switchboard--clip
+                                  (concat (if pr (format "#%d " (plist-get pr :number)) "")
+                                          (or (switchboard-session-branch s) "")
+                                          "   " (abbreviate-file-name (switchboard-session-dir s)))
+                                  size (- width x 10))
+                             x y size (plist-get pal :dim)))
     (switchboard--image svg)))
 
 (defun switchboard--header-width (win)

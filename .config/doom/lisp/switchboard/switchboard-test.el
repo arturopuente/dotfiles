@@ -172,6 +172,44 @@ recorded in `switchboard-test--notified'."
                                 switchboard-test--notified)))
       (kill-buffer buf))))
 
+(ert-deftest switchboard-test-merged-pull-request-shows-merged-when-idle ()
+  (switchboard-test--with-session s
+    (setf (switchboard-session-pr s) '(:number 7 :state merged :draft nil))
+    (should (eq (switchboard--shown-status s) 'merged))
+    (should (equal (switchboard--label s) "MERGED"))
+    ;; Exited or paused, it says so, and that it was merged.
+    (dolist (status '(exited paused))
+      (setf (switchboard-session-status s) status)
+      (should (eq (switchboard--shown-status s) status))
+      (should (equal (switchboard--label s) (concat (upcase (symbol-name status)) " | MERGED"))))
+    ;; Work, a prompt or an unseen turn still show over it.
+    (dolist (status '(working waiting error))
+      (setf (switchboard-session-status s) status)
+      (should (eq (switchboard--shown-status s) status)))
+    (setf (switchboard-session-status s) 'ready
+          (switchboard-session-unread s) t)
+    (should (eq (switchboard--status-key s) 'unread))
+    (setf (switchboard-session-unread s) nil
+          (switchboard-session-pr s) '(:number 7 :state open :draft t))
+    (should (eq (switchboard--pr-state s) 'draft))
+    (should (eq (switchboard--shown-status s) 'ready))))
+
+(ert-deftest switchboard-test-new-branch-drops-the-old-pull-request ()
+  (switchboard-test--with-session s
+    (setf (switchboard-session-branch s) "old"
+          (switchboard-session-pr s) '(:number 7 :state merged :draft nil))
+    (let ((proc (make-process :name "switchboard-test-git" :command '("true") :sentinel #'ignore
+                              :buffer (generate-new-buffer " *switchboard-test*")))
+          looked-up)
+      (while (process-live-p proc) (accept-process-output proc 0.05))
+      (with-current-buffer (process-buffer proc) (insert "new\n@@\n@@\n"))
+      (cl-letf (((symbol-function 'switchboard--update-pr)
+                 (lambda (s &rest _) (push (switchboard-session-branch s) looked-up))))
+        (switchboard--git-done s proc))
+      (should (equal (switchboard-session-branch s) "new"))
+      (should-not (switchboard-session-pr s))
+      (should (equal looked-up '("new"))))))
+
 (ert-deftest switchboard-test-waiting-reminds-until-answered ()
   (switchboard-test--with-session s
     (let ((switchboard-remind-after 600))
