@@ -146,6 +146,7 @@ nil notifies once."
                                    (:copier nil))
   id name title named harness root dir branch buffer
   (status 'ready) unread marked task detail tokens resume-id transcript changes pr
+  cwd worktree
   (changed (float-time)) (turn-start (float-time)))
 
 (defvar switchboard--sessions nil
@@ -161,6 +162,24 @@ nil notifies once."
 
 (defun switchboard--find (id)
   (cl-find id switchboard--sessions :key #'switchboard-session-id :test #'equal))
+
+(defun switchboard--work-dir (s)
+  "Where S's agent works: the folder its hooks last reported, if it
+still exists, else the one it started in.  The agent can move to a
+worktree of its own; git and pull requests are read from there, while
+resuming and worktree cleanup stay with `switchboard-session-dir'."
+  (let ((cwd (switchboard-session-cwd s)))
+    (if (and cwd (file-directory-p cwd)) cwd (switchboard-session-dir s))))
+
+(defun switchboard--note-cwd (s cwd)
+  "Record CWD, the folder S's agent reported, and re-read git if it moved."
+  (when (and (stringp cwd) (file-directory-p cwd)
+             (not (equal (file-name-as-directory (expand-file-name cwd))
+                         (file-name-as-directory (expand-file-name (switchboard--work-dir s))))))
+    (setf (switchboard-session-cwd s) cwd)
+    (switchboard--save-soon)
+    (switchboard--update-git s)
+    (switchboard--schedule-render)))
 
 (defun switchboard--project (s)
   (file-name-nondirectory (directory-file-name (switchboard-session-root s))))
@@ -610,8 +629,13 @@ of your own instead."
 (defconst switchboard--git-script
   (concat "git branch --show-current 2>/dev/null; echo @@;"
           "git diff HEAD --numstat 2>/dev/null; echo @@;"
-          "git ls-files --others --exclude-standard 2>/dev/null")
-  "One shell run that prints the branch, the diff and new files, split by @@.")
+          "git ls-files --others --exclude-standard 2>/dev/null; echo @@;"
+          ;; A linked worktree's git dir isn't the repository's common one.
+          "[ \"$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)\" !="
+          " \"$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)\" ]"
+          " && echo worktree")
+  "One shell run that prints the branch, the diff, new files and whether
+it's a linked worktree, split by @@.")
 
 (defun switchboard--update-git (s)
   "Re-read S's branch, in case the agent checked out another one, and
@@ -619,7 +643,7 @@ its uncommitted changes.  Git runs in the background, so a big repo
 doesn't stall Emacs; asked again while it runs, it runs once more."
   (let* ((id (switchboard-session-id s))
          (running (gethash id switchboard--git-procs))
-         (dir (switchboard-session-dir s)))
+         (dir (switchboard--work-dir s)))
     (cond
      ((process-live-p running) (process-put running 'again t))
      ((file-directory-p dir)
@@ -664,7 +688,12 @@ A turn can make dozens of edits; this reads git once per burst."
           (switchboard--schedule-render))
         (unless (equal changes (switchboard-session-changes s))
           (setf (switchboard-session-changes s) changes)
-          (switchboard--schedule-render)))
+          (switchboard--schedule-render))
+        (let ((worktree (and (string-match-p "^worktree$" output) t)))
+          (unless (eq worktree (switchboard-session-worktree s))
+            (setf (switchboard-session-worktree s) worktree)
+            (switchboard--save-soon)
+            (switchboard--schedule-render))))
       (switchboard--update-pr s)
       (when (process-get proc 'again)
         (switchboard--update-git s)))))
@@ -695,12 +724,11 @@ master, whose pull requests aren't S's."
         (switchboard--schedule-render)))
      ((or (process-live-p (gethash id switchboard--pr-procs))
           (not (executable-find "gh"))
-          (not (file-directory-p (switchboard-session-dir s)))
           (and (not force) (equal (car checked) branch)
                (< (- (float-time) (cdr checked)) 60))))
      (t
       (puthash id (cons branch (float-time)) switchboard--pr-checked)
-      (let ((default-directory (switchboard-session-dir s)))
+      (let ((default-directory (switchboard--work-dir s)))
         (puthash id
                  (make-process
                   :name "switchboard-pr" :noquery t :connection-type 'pipe
@@ -753,7 +781,7 @@ hook event."
   "Parse `switchboard--git-script' OUTPUT into (BRANCH . CHANGES).
 BRANCH is nil when detached or not a repository; CHANGES is
 (ADDED DELETED UNTRACKED), or nil if there are none."
-  (pcase-let* ((`(,branch ,diff ,others) (split-string output "^@@\n"))
+  (pcase-let* ((`(,branch ,diff ,others . ,_) (split-string output "^@@\n"))
                (branch (string-trim (or branch "")))
                (added 0) (deleted 0)
                (untracked (length (split-string (or others "") "\n" t))))
@@ -777,6 +805,7 @@ Called by switchboard-hook.sh through emacsclient."
         (s (switchboard--find id)))
     ;; A paused session's process may still report the turn it was cut off in.
     (when (and s (not (eq (switchboard-session-status s) 'paused)))
+      (switchboard--note-cwd s (alist-get 'cwd payload))
       (pcase event
         ("SessionStart"
          (setf (switchboard-session-resume-id s) (alist-get 'session_id payload))
@@ -887,7 +916,8 @@ Called by switchboard-hook.sh through emacsclient."
   :type 'file)
 
 (defconst switchboard--saved-slots
-  '(id name title named harness root dir branch task resume-id transcript tokens pr)
+  '(id name title named harness root dir branch task resume-id transcript tokens pr
+    cwd worktree)
   "The session fields worth keeping; status and buffers are not.")
 
 (defvar switchboard--save-timer nil)
@@ -1241,7 +1271,8 @@ add up to hundreds of megabytes."
 
 (defun switchboard--draw-pr-icon (svg kind x cy size color)
   "Draw a SIZE-pixel KIND icon at X, centered on CY, in COLOR.
-KIND is `branch', or a pull request's `open', `draft', `merged' or `closed'."
+KIND is `worktree', `branch', or a pull request's `open', `draft', `merged'
+or `closed'."
   (let* ((k (/ size 16.0))
          (g (svg-node svg 'g :transform (format "translate(%.2f %.2f) scale(%.3f)"
                                                  x (- cy (/ size 2.0)) k)
@@ -1250,6 +1281,8 @@ KIND is `branch', or a pull request's `open', `draft', `merged' or `closed'."
          (dot (lambda (cx cy) (svg-circle g cx cy 1.9)))
          (path (lambda (d &rest props) (apply #'svg-node g 'path :d d props))))
     (pcase kind
+      ('worktree                        ; a folder: a checkout of its own
+       (funcall path "M2 4.6 Q2 3 3.6 3 H6.4 L8 4.6 H12.4 Q14 4.6 14 6.2 V11.4 Q14 13 12.4 13 H3.6 Q2 13 2 11.4 Z"))
       ('branch
        (funcall dot 4.5 3.5) (funcall dot 4.5 12.5) (funcall dot 11.5 4.5)
        (funcall path "M4.5 5.4 V10.6")
@@ -1398,13 +1431,14 @@ has focus; another session on screen (in a split) only gets an outline."
              (text (string-replace "\n" " " (or (switchboard-session-detail s) "")))
              (changes-w (switchboard--changes-width s small))
              (icon-w (round (* 0.9 small)))
+             (wt-w (if (switchboard-session-worktree s) (+ icon-w 4) 0))
              (branch (and (switchboard-session-branch s)
                           (switchboard--clip (switchboard-session-branch s)
                                              small (- (* (if (string-empty-p text) 1 0.4)
                                                          (- age-x text-x changes-w))
-                                                      icon-w 5))))
+                                                      icon-w 5 wt-w))))
              (branch-w (+ (if branch
-                              (+ icon-w 5 (switchboard--text-width branch small) 12)
+                              (+ wt-w icon-w 5 (switchboard--text-width branch small) 12)
                             0)
                           changes-w)))
         (switchboard--draw-label svg s name-x y2 small)
@@ -1414,9 +1448,11 @@ has focus; another session on screen (in a split) only gets an outline."
           (let ((end (- age-x changes-w)))
             (switchboard--svg-text svg branch end y2 small (plist-get pal :dim)
                                    :text-anchor "end")
-            (switchboard--draw-branch-icon
-             svg s (- end (switchboard--text-width branch small) 5 icon-w) (- y2 (* 0.35 small))
-             icon-w pal)))
+            (let ((icon-x (- end (switchboard--text-width branch small) 5 icon-w)))
+              (switchboard--draw-branch-icon svg s icon-x (- y2 (* 0.35 small)) icon-w pal)
+              (when (switchboard-session-worktree s)
+                (switchboard--draw-pr-icon svg 'worktree (- icon-x wt-w) (- y2 (* 0.35 small))
+                                           icon-w (plist-get pal :dim))))))
         (switchboard--draw-changes svg s age-x y2 small)))
     (switchboard--image svg)))
 
@@ -1569,13 +1605,16 @@ FOCUSED means its window is selected."
     (setq x (+ x (switchboard--draw-label svg s x y size) 18))
     (let ((icon-w (round (* 0.9 size)))
           (pr (switchboard-session-pr s)))
+      (when (switchboard-session-worktree s)
+        (switchboard--draw-pr-icon svg 'worktree x (- y (* 0.35 size)) icon-w (plist-get pal :dim))
+        (setq x (+ x icon-w 4)))
       (when (switchboard-session-branch s)
         (switchboard--draw-branch-icon svg s x (- y (* 0.35 size)) icon-w pal)
         (setq x (+ x icon-w 6)))
       (switchboard--svg-text svg (switchboard--clip
                                   (concat (if pr (format "#%d " (plist-get pr :number)) "")
                                           (or (switchboard-session-branch s) "")
-                                          "   " (abbreviate-file-name (switchboard-session-dir s)))
+                                          "   " (abbreviate-file-name (switchboard--work-dir s)))
                                   size (- width x 10))
                              x y size (plist-get pal :dim)))
     (switchboard--image svg)))
@@ -1902,8 +1941,8 @@ touch the agent's status.")
     (set-window-buffer win buf)
     (select-window win)
     (when fresh
-      (with-current-buffer buf (setq default-directory (switchboard-session-dir s)))
-      (let ((default-directory (switchboard-session-dir s))
+      (with-current-buffer buf (setq default-directory (switchboard--work-dir s)))
+      (let ((default-directory (switchboard--work-dir s))
             (process-environment
              (cl-remove-if (lambda (v) (string-match-p switchboard--inherited-env v))
                            process-environment)))
@@ -2358,7 +2397,7 @@ On a recently closed one, reopen it."
   "Open magit-status for S's worktree in the main window."
   (interactive (list (switchboard--at-point)))
   (select-window (switchboard--main-window))
-  (magit-status-setup-buffer (switchboard-session-dir s)))
+  (magit-status-setup-buffer (switchboard--work-dir s)))
 
 (defun switchboard-filter (text)
   "Only list sessions matching every word of TEXT; empty clears it."

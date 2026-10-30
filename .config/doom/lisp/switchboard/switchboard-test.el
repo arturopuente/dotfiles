@@ -22,7 +22,13 @@ recorded in `switchboard-test--notified'."
                                              :harness 'claude :root dir :dir dir))
           (switchboard--sessions (list ,var))
           (switchboard-test--notified nil)
-          (switchboard-remind-after nil))
+          (switchboard-remind-after nil)
+          ;; A git or gh run left by an earlier test, under the same id,
+          ;; would swallow this test's.
+          (switchboard--git-procs (make-hash-table :test 'equal))
+          (switchboard--git-timers (make-hash-table :test 'equal))
+          (switchboard--pr-procs (make-hash-table :test 'equal))
+          (switchboard--pr-checked (make-hash-table :test 'equal)))
      (cl-letf (((symbol-function 'switchboard--schedule-render) #'ignore)
                ((symbol-function 'switchboard--save-soon) #'ignore)
                ((symbol-function 'switchboard--notify)
@@ -265,6 +271,34 @@ recorded in `switchboard-test--notified'."
       (with-temp-file "new" (insert "x"))
       (switchboard-test--refresh s)
       (should (equal (switchboard-session-changes s) '(3 2 1))))))
+
+(ert-deftest switchboard-test-follows-the-agent-into-a-worktree ()
+  (switchboard-test--with-session s
+    (let* ((default-directory (switchboard-session-dir s))
+           (tree (concat (directory-file-name default-directory) "-tree/")))
+      (call-process "git" nil nil nil "init" "-q" "-b" "main")
+      (call-process "git" nil nil nil "-c" "user.name=t" "-c" "user.email=t@t"
+                    "commit" "-q" "--allow-empty" "-m" "init")
+      (cl-letf (((symbol-function 'switchboard--update-pr) #'ignore))
+        (switchboard-test--refresh s)
+        (should (equal (switchboard-session-branch s) "main"))
+        (should-not (switchboard-session-worktree s))
+        (call-process "git" nil nil nil "worktree" "add" "-q" "-b" "fix" tree)
+        (unwind-protect
+            (progn
+              ;; Its next hook event reports the worktree as its folder.
+              (switchboard-hook "heron-0001" "Stop"
+                                (let ((f (make-temp-file "switchboard-payload")))
+                                  (with-temp-file f
+                                    (insert (json-serialize `((cwd . ,tree)))))
+                                  f))
+              (while (gethash (switchboard-session-id s) switchboard--git-procs)
+                (accept-process-output nil 0.05))
+              (should (equal (switchboard--work-dir s) tree))
+              (should (equal (switchboard-session-dir s) default-directory))
+              (should (equal (switchboard-session-branch s) "fix"))
+              (should (switchboard-session-worktree s)))
+          (delete-directory tree t))))))
 
 (ert-deftest switchboard-test-tool-calls-refresh-git-once ()
   (switchboard-test--with-session s
