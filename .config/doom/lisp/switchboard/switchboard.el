@@ -1013,9 +1013,28 @@ Claude sessions continue their conversation; Codex resumes its last one."
   (apply #'svg-text svg string :x x :y y :font-size size :fill fill
          :font-family (switchboard--font-family) props))
 
+(defvar switchboard--images nil
+  "Images drawn since the last render began, which keep their cache entries.")
+
+(defvar switchboard--drawn-images nil
+  "Images the last render drew.")
+
 (defun switchboard--image (svg)
   ;; :scale 1, or `image-scaling-factor' enlarges it with big fonts.
-  (propertize " " 'display (svg-image svg :scale 1 :ascent 'center)))
+  (let ((image (svg-image svg :scale 1 :ascent 'center)))
+    (push image switchboard--images)
+    (propertize " " 'display image)))
+
+(defun switchboard--flush-images ()
+  "Drop the images the last render drew that this one replaced.
+Emacs caches each image for `image-cache-eviction-delay' seconds, and a
+working session's spinner draws new ones twice a second: unflushed, they
+add up to hundreds of megabytes."
+  (dolist (image switchboard--drawn-images)
+    (unless (member image switchboard--images)
+      (image-flush image t)))
+  (setq switchboard--drawn-images switchboard--images
+        switchboard--images nil))
 
 (defun switchboard--draw-chip (svg s x y w h pal)
   "The status square: filled, or outlined for a READY you've seen."
@@ -1361,8 +1380,20 @@ FOCUSED means its window is selected."
 (defvar-local switchboard--drawn-selection nil
   "The session, or group key, drawn as selected, so moving point knows to redraw.")
 
+(defvar switchboard--drawn-clock nil
+  "`switchboard--clock' as of the last render.")
+
+(defun switchboard--clock ()
+  "What passing time changes in the list: the spinner, while a session
+works, and the ages shown."
+  (list (and (cl-find 'working switchboard--sessions :key #'switchboard-session-status)
+             (float-time))
+        (mapcar #'switchboard--age switchboard--sessions)
+        (mapcar (lambda (e) (switchboard--ago (plist-get e :closed))) switchboard--recent)))
+
 (defun switchboard--render ()
-  (setq switchboard--render-timer nil)
+  (setq switchboard--render-timer nil
+        switchboard--drawn-clock (switchboard--clock))
   (let ((pal (switchboard--palette)))
     (switchboard--update-terminal-headers pal)
     (when-let* ((buf (get-buffer switchboard--buffer-name)))
@@ -1428,7 +1459,8 @@ FOCUSED means its window is selected."
             (goto-char (prop-match-beginning m)))
           (setq switchboard--drawn-selection (or selected at-group at-closed))
           (when win (set-window-point win (point)))
-          (force-mode-line-update))))))
+          (force-mode-line-update)))))
+  (switchboard--flush-images))
 
 (defun switchboard--row-key ()
   "The session, group key or closed session's entry of the row at point."
@@ -1448,7 +1480,8 @@ FOCUSED means its window is selected."
 (defun switchboard--tick ()
   "Redraw for the spinner and ages while the list is on screen."
   (if (get-buffer-window switchboard--buffer-name t)
-      (switchboard--render)
+      (unless (equal (switchboard--clock) switchboard--drawn-clock)
+        (switchboard--render))
     (cancel-timer switchboard--tick-timer)
     (setq switchboard--tick-timer nil)))
 
