@@ -339,6 +339,17 @@ This command does not push text to `kill-ring'."
 
 (add-load-path! "lisp/switchboard")
 
+;; Compiled, Switchboard's redraws are faster and allocate far less.  Not
+;; through `switchboard--compile': it isn't loaded yet.  `load-prefer-newer'
+;; is off, so a stale .elc would win over the .el.
+(let* ((el (expand-file-name "lisp/switchboard/switchboard.el" doom-user-dir))
+       (elc (byte-compile-dest-file el)))
+  (when (file-newer-than-file-p el elc)
+    (let ((byte-compile-warnings nil)
+          (inhibit-message t))
+      (unless (ignore-errors (byte-compile-file el))
+        (ignore-errors (delete-file elc))))))      ; then the .el loads
+
 (use-package! switchboard
   :commands (switchboard switchboard-new switchboard-toggle-focus
              switchboard-next-attention switchboard-hook
