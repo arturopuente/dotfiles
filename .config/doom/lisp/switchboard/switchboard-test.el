@@ -146,6 +146,32 @@ recorded in `switchboard-test--notified'."
       (should (eq (switchboard-session-status s) 'exited))
       (should-not switchboard-test--notified))))
 
+(ert-deftest switchboard-test-pause-stops-the-process-and-stays-paused ()
+  (switchboard-test--with-session s
+    (let ((buf (generate-new-buffer " *switchboard-test*"))
+          (switchboard-notify '(ready error exited)))
+      (with-current-buffer buf (setq switchboard--session s))
+      (setf (switchboard-session-buffer s) buf)
+      ;; Like ghostel's native terminal: the buffer's process is a pipe,
+      ;; with the agent's pid kept on it.
+      (let ((agent (start-process "switchboard-test" nil "sleep" "60"))
+            (pipe (make-pipe-process :name "switchboard-test-pipe" :buffer buf :noquery t)))
+        (process-put pipe 'ghostel--native-pid (process-id agent))
+        (switchboard-test--hook "Stop")
+        (setq switchboard-test--notified nil)
+        (switchboard-pause s)
+        (should (eq (switchboard-session-status s) 'paused))
+        (while (process-live-p agent) (accept-process-output agent 0.05))
+        (delete-process pipe)
+        ;; The cut-off turn's events and the exit leave it paused, quietly.
+        (switchboard-test--hook "StopFailure" '((error . "interrupted")))
+        (switchboard--on-exit buf "terminated\n")
+        (should (eq (switchboard-session-status s) 'paused))
+        (should-not (switchboard-session-detail s))
+        (should-not (cl-find-if (lambda (n) (memq (cdr n) switchboard-notify))
+                                switchboard-test--notified)))
+      (kill-buffer buf))))
+
 (ert-deftest switchboard-test-waiting-reminds-until-answered ()
   (switchboard-test--with-session s
     (let ((switchboard-remind-after 600))

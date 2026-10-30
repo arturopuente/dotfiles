@@ -108,6 +108,8 @@ nil notifies once."
   "Sessions waiting for their next prompt.")
 (defface switchboard-exited '((t :inherit shadow))
   "Sessions whose process has exited.")
+(defface switchboard-paused '((t :inherit shadow))
+  "Sessions you paused: their process stopped, their conversation kept.")
 (defface switchboard-row-waiting
   '((((background light)) :background "#f7e0f3" :extend t) (t :background "#3a1d36" :extend t))
   "Row background for sessions that need you.")
@@ -682,7 +684,8 @@ BRANCH is nil when detached or not a repository; CHANGES is
 Called by switchboard-hook.sh through emacsclient."
   (let ((payload (switchboard--read-payload file))
         (s (switchboard--find id)))
-    (when s
+    ;; A paused session's process may still report the turn it was cut off in.
+    (when (and s (not (eq (switchboard-session-status s) 'paused)))
       (pcase event
         ("SessionStart"
          (setf (switchboard-session-resume-id s) (alist-get 'session_id payload))
@@ -747,7 +750,8 @@ Called by switchboard-hook.sh through emacsclient."
 (defun switchboard--on-exit (buf event)
   ;; Killing the buffer (x) doesn't get here, ghostel only calls this for
   ;; a live one; a clean exit is /exit or Ctrl-D, so only a failure notifies.
-  (when-let* ((s (buffer-local-value 'switchboard--session buf)))
+  (when-let* ((s (buffer-local-value 'switchboard--session buf))
+              ((not (eq (switchboard-session-status s) 'paused))))
     (let ((switchboard-notify (if (string-prefix-p "finished" event)
                                   (remq 'exited switchboard-notify)
                                 switchboard-notify)))
@@ -875,10 +879,10 @@ Claude sessions continue their conversation; Codex resumes its last one."
 (defvar switchboard--render-timer nil)
 (defvar switchboard--tick-timer nil)
 
-(defconst switchboard--status-order '(waiting error stopped unread working ready exited))
+(defconst switchboard--status-order '(waiting error stopped unread working ready paused exited))
 (defconst switchboard--status-titles
   '((waiting . "Needs you") (error . "Errored") (stopped . "Stopped") (unread . "Finished")
-    (working . "Working") (ready . "Ready") (exited . "Exited")))
+    (working . "Working") (ready . "Ready") (paused . "Paused") (exited . "Exited")))
 
 (defun switchboard--status-key (s)
   (if (and (eq (switchboard-session-status s) 'ready) (switchboard-session-unread s))
@@ -891,7 +895,7 @@ Claude sessions continue their conversation; Codex resumes its last one."
 (defun switchboard--label (s)
   (pcase (switchboard-session-status s)
     ('working "WORKING") ('waiting "NEEDS YOU") ('error "ERROR")
-    ('stopped "STOPPED") ('exited "EXITED")
+    ('stopped "STOPPED") ('paused "PAUSED") ('exited "EXITED")
     (_ (if (switchboard-session-unread s) "READY · NEW" "READY"))))
 
 (defun switchboard--age (s)
@@ -1040,7 +1044,7 @@ add up to hundreds of megabytes."
   "The status square: filled, or outlined for a READY you've seen."
   (let* ((status (switchboard-session-status s))
          (color (switchboard--color (switchboard--face s)))
-         (outline (and (memq status '(ready exited)) (not (switchboard-session-unread s))))
+         (outline (and (memq status '(ready paused exited)) (not (switchboard-session-unread s))))
          (ink (if outline color (plist-get pal :paper)))
          (cx (+ x (/ w 2.0)))
          (cy (+ y (/ h 2.0)))
@@ -1066,6 +1070,10 @@ add up to hundreds of megabytes."
          (svg-rectangle svg (- cx (/ side 2)) (- cy (/ side 2)) side side :rx 1.5 :fill ink)))
       ('waiting (funcall glyph "?"))
       ('error (funcall glyph "!"))
+      ('paused
+       (let ((bar-w (* 0.12 h)) (bar-h (* 0.42 h)))
+         (dolist (bx (list (- cx (* 1.5 bar-w)) (+ cx (* 0.5 bar-w))))
+           (svg-rectangle svg bx (- cy (/ bar-h 2)) bar-w bar-h :rx 0.5 :fill color))))
       ('exited (funcall glyph "×"))
       (_ (if (switchboard-session-unread s)
              (funcall glyph "✓")
@@ -1499,6 +1507,7 @@ works, and the ages shown."
   "u" #'switchboard-unmark-all
   "b" #'switchboard-broadcast
   "r" #'switchboard-resume
+  "p" #'switchboard-pause
   "R" #'switchboard-rename
   "x" #'switchboard-kill
   "P" #'switchboard-prune-worktrees
@@ -2057,8 +2066,26 @@ worktree or an unmerged branch is only removed once you confirm it."
             (message "Switchboard: couldn't remove %s" (abbreviate-file-name dir))))))
     (message "Removed %d worktree%s" removed (if (= removed 1) "" "s"))))
 
+(defun switchboard-pause (s)
+  "Stop session S's process but keep it listed, to resume later.
+Its terminal stays, with what it showed; on a paused session, resume it."
+  (interactive (list (switchboard--at-point)))
+  (let ((proc (and (buffer-live-p (switchboard-session-buffer s))
+                   (get-buffer-process (switchboard-session-buffer s)))))
+    (cond ((eq (switchboard-session-status s) 'paused) (switchboard-resume s))
+          ((not (process-live-p proc))
+           (user-error "%s isn't running; r resumes it" (switchboard--title s)))
+          ((or (not (memq (switchboard-session-status s) '(working waiting)))
+               (y-or-n-p (format "Pause %s mid-turn? " (switchboard--title s))))
+           ;; SIGTERM, not Ctrl-C: it lets the agent save its conversation.
+           ;; ghostel's native terminal hands Emacs a pipe, which has no pid
+           ;; of its own; the agent's is kept on it.
+           (signal-process (or (process-get proc 'ghostel--native-pid) proc) 'SIGTERM)
+           (setf (switchboard-session-detail s) nil)
+           (switchboard--set s 'paused)))))
+
 (defun switchboard-resume (s)
-  "Restart an exited session S where its conversation left off.
+  "Restart an exited or paused session S where its conversation left off.
 On a recently closed one, reopen it."
   (interactive (list (switchboard--at-point t)))
   (if (not (switchboard-session-p s))
@@ -2212,7 +2239,8 @@ since `defvar-keymap' and `defface' keep existing values."
     (switchboard-next-attention "Open the next session that needs you")
     (switchboard-new "Start a new session")
     (switchboard-rename "Rename the session at point")
-    (switchboard-resume "Resume an exited session, or reopen a closed one")
+    (switchboard-pause "Pause it, stopping its process; on a paused one, resume it")
+    (switchboard-resume "Resume an exited or paused session, or reopen a closed one")
     (switchboard-kill "Kill it (it's listed as recently closed); on a closed one, forget it")
     (switchboard-prune-worktrees "Remove worktrees no session uses")
     (switchboard-mark "Toggle its broadcast mark")
