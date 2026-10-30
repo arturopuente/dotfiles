@@ -2479,6 +2479,8 @@ since `defvar-keymap' and `defface' keep existing values."
         (face-spec-set (car face) (get (car face) 'face-defface-spec) 'face-defface-spec)))
     (when-let* ((buf (get-buffer switchboard--buffer-name)))
       (with-current-buffer buf (switchboard-list-mode)))
+    ;; Cached images were drawn by the old code; keys don't say which.
+    (clrhash switchboard--cache)
     (switchboard--render)
     (message "Switchboard reloaded; %d session%s untouched" (length switchboard--sessions)
              (if (= 1 (length switchboard--sessions)) "" "s"))))
