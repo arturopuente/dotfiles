@@ -1029,6 +1029,34 @@ Claude sessions continue their conversation; Codex resumes its last one."
     (push image switchboard--images)
     (propertize " " 'display image)))
 
+(defvar switchboard--cache (make-hash-table :test 'equal)
+  "The images the last render drew, by what they show.")
+
+(defvar switchboard--cache-next nil
+  "The images this render has drawn or reused, by what they show.")
+
+(defvar switchboard--cache-env nil
+  "What every image shows: the palette, font and layout of this render.")
+
+(defun switchboard--cached (key draw)
+  "The image DRAW returns, reused from the last render if KEY is the same.
+KEY must hold everything the image shows that the render's palette,
+font and layout don't; a session goes in as a copy, since it changes in
+place.  While a session works only its row and header change, so this
+spares redrawing all the others twice a second."
+  (let* ((key (cons switchboard--cache-env key))
+         (image (gethash key switchboard--cache)))
+    (if image
+        (push (get-text-property 0 'display image) switchboard--images)
+      (setq image (funcall draw)))
+    (when switchboard--cache-next        ; nil outside a render
+      (puthash key image switchboard--cache-next))
+    image))
+
+(defun switchboard--spinner-key (s)
+  "S's spinner, for a cache key: it turns, so it never matches, while S works."
+  (and (eq (switchboard-session-status s) 'working) (float-time)))
+
 (defun switchboard--flush-images ()
   "Drop the images the last render drew that this one replaced.
 Emacs caches each image for `image-cache-eviction-delay' seconds, and a
@@ -1038,7 +1066,9 @@ add up to hundreds of megabytes."
     (unless (member image switchboard--images)
       (image-flush image t)))
   (setq switchboard--drawn-images switchboard--images
-        switchboard--images nil))
+        switchboard--images nil
+        switchboard--cache (or switchboard--cache-next switchboard--cache)
+        switchboard--cache-next nil))
 
 (defun switchboard--draw-chip (svg s x y w h pal)
   "The status square: filled, or outlined for a READY you've seen."
@@ -1379,10 +1409,12 @@ FOCUSED means its window is selected."
                 ((buffer-live-p buf)))
       (let ((win (get-buffer-window buf t)))
         (with-current-buffer buf
-          (setq switchboard--terminal-header-image
-                (switchboard--terminal-header
-                 s (if win (switchboard--header-width win) 1200) pal
-                 (and win (eq win (selected-window)))))
+          (let ((width (if win (switchboard--header-width win) 1200))
+                (focused (and win (eq win (selected-window)))))
+            (setq switchboard--terminal-header-image
+                  (switchboard--cached
+                   (list 'terminal (copy-sequence s) width focused (switchboard--spinner-key s))
+                   (lambda () (switchboard--terminal-header s width pal focused)))))
           (when win (force-mode-line-update)))))))
 
 (defvar-local switchboard--drawn-selection nil
@@ -1403,6 +1435,9 @@ works, and the ages shown."
   (setq switchboard--render-timer nil
         switchboard--drawn-clock (switchboard--clock))
   (let ((pal (switchboard--palette)))
+    (setq switchboard--cache-next (make-hash-table :test 'equal)
+          switchboard--cache-env (list pal (switchboard--font-size) (switchboard--font-family)
+                                       switchboard-compact custom-enabled-themes))
     (switchboard--update-terminal-headers pal)
     (when-let* ((buf (get-buffer switchboard--buffer-name)))
       (with-current-buffer buf
@@ -1425,36 +1460,63 @@ works, and the ages shown."
                                           switchboard--sessions))
                (index 0))
           (setq switchboard--header-image
-                (switchboard--header (if win (switchboard--header-width win) width) pal focused))
+                (let ((width (if win (switchboard--header-width win) width)))
+                  (switchboard--cached
+                   (list 'header width focused switchboard--filter
+                         (mapcar #'switchboard--status-key switchboard--sessions))
+                   (lambda () (switchboard--header width pal focused)))))
           (erase-buffer)
           (when waiting
-            (insert (propertize (switchboard--banner waiting width pal) 'switchboard-banner t)
+            (insert (propertize (switchboard--cached
+                                 (list 'banner width (mapcar #'switchboard--title waiting))
+                                 (lambda () (switchboard--banner waiting width pal)))
+                                'switchboard-banner t)
                     (switchboard--eol bg)))
           (unless switchboard--sessions
             (insert (propertize "\n  c starts a session.\n"
                                 'face '(:inherit shadow :height 2.0)))) ; full size
           (pcase-dolist (`(,key ,title . ,members) (switchboard--groups))
-            (insert (propertize (switchboard--group-row title (length members)
-                                                        (member key switchboard--folded) width pal
-                                                        (equal key at-group))
+            (insert (propertize (let ((folded (and (member key switchboard--folded) t))
+                                      (selected (equal key at-group)))
+                                  (switchboard--cached
+                                   (list 'group title (length members) folded width selected)
+                                   (lambda ()
+                                     (switchboard--group-row title (length members) folded
+                                                             width pal selected))))
                                 'switchboard-group key)
                     (switchboard--eol bg))
             (dolist (s members)
               (when (switchboard--shown-p key s)
-                (insert (propertize (switchboard--row s (cl-incf index) width
-                                                     (and (eq s selected) 'focused)
-                                                     pal)
+                (insert (propertize (let ((index (cl-incf index))
+                                          (sel (and (eq s selected) 'focused)))
+                                      (switchboard--cached
+                                       (list 'row (copy-sequence s) index width sel
+                                             (and (switchboard--on-screen-p s) t)
+                                             (switchboard--age s) (switchboard--spinner-key s))
+                                       (lambda () (switchboard--row s index width sel pal))))
                                     'switchboard-session s)
                         (switchboard--eol bg)))))
           (when switchboard--recent
-            (insert (propertize (switchboard--group-row "Recently closed" (length switchboard--recent)
-                                                        (memq 'recent switchboard--folded) width pal
-                                                        (eq at-group 'recent))
+            (insert (propertize (let ((folded (and (memq 'recent switchboard--folded) t))
+                                      (selected (eq at-group 'recent)))
+                                  (switchboard--cached
+                                   (list 'group "Recently closed" (length switchboard--recent)
+                                         folded width selected)
+                                   (lambda ()
+                                     (switchboard--group-row "Recently closed"
+                                                             (length switchboard--recent)
+                                                             folded width pal selected))))
                                 'switchboard-group 'recent)
                     (switchboard--eol bg))
             (unless (memq 'recent switchboard--folded)
               (dolist (entry switchboard--recent)
-                (insert (propertize (switchboard--recent-row entry width pal (eq entry at-closed))
+                (insert (propertize (let ((selected (eq entry at-closed)))
+                                      (switchboard--cached
+                                       (list 'recent entry width selected
+                                             (switchboard--ago (plist-get entry :closed))
+                                             (file-directory-p (plist-get entry :dir)))
+                                       (lambda ()
+                                         (switchboard--recent-row entry width pal selected))))
                                     'switchboard-recent entry)
                         (switchboard--eol bg)))))
           (goto-char (point-min))
@@ -2207,6 +2269,18 @@ name, and point the terminal and drawer buffers at the new records."
       (message "Switchboard: rebuilt %d session%s for the new layout"
                (length map) (if (cdr map) "s" "")))))
 
+(defun switchboard--compile (file)
+  "Byte-compile FILE if its .elc is missing or older; return the file to load.
+Interpreted, the list's redraws run slower and allocate several times
+more.  If compiling fails, return FILE itself."
+  (let ((elc (byte-compile-dest-file file)))
+    (if (or (not (file-newer-than-file-p file elc))
+            (let ((byte-compile-warnings nil)
+                  (inhibit-message t))
+              (ignore-errors (byte-compile-file file))))
+        elc
+      file)))
+
 (defun switchboard-reload ()
   "Load this file again, picking up changes; running sessions carry on.
 A plain `load-file' would miss changes to the list's keys and faces,
@@ -2217,7 +2291,7 @@ since `defvar-keymap' and `defface' keep existing values."
     (makunbound 'switchboard-list-mode-map)
     (dolist (face (get 'switchboard 'custom-group))
       (when (eq (cadr face) 'custom-face) (put (car face) 'face-defface-spec nil)))
-    (load file nil t t)
+    (load (switchboard--compile file) nil t t)
     (switchboard--migrate-sessions slots)
     (dolist (face (get 'switchboard 'custom-group))
       (when (eq (cadr face) 'custom-face)
