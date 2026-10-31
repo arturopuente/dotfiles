@@ -494,6 +494,32 @@ recorded in `switchboard-test--notified'."
       (switchboard-test--hook "SessionStart" '((session_id . "conv-heron-2")))
       (should (equal (switchboard-session-resume-id s) "conv-heron-2")))))
 
+(ert-deftest switchboard-test-a-backgrounded-fork-goes-to-its-terminal ()
+  ;; The daemon's fork of wren's conversation carries heron's SWITCHBOARD_ID.
+  (switchboard-test--with-session s
+    (let ((other (switchboard--session-create :id "wren-0002" :name "wren" :harness 'claude
+                                              :root dir :dir dir :resume-id "conv-wren")))
+      (push other switchboard--sessions)
+      (cl-letf (((symbol-function 'switchboard--fork-parent)
+                 (lambda (id) (and (equal id "conv-fork") "conv-wren"))))
+        (switchboard-test--hook "SessionStart" '((session_id . "conv-heron")))
+        (switchboard-test--hook "SessionStart" '((session_id . "conv-fork") (source . "resume")))
+        (switchboard-test--hook "SubagentStart" '((session_id . "conv-fork") (agent_id . "a1")
+                                                  (agent_type . "Explore")))
+        (should (equal (switchboard-session-resume-id other) "conv-fork"))
+        (should (equal (switchboard-session-resume-id s) "conv-heron"))
+        (should-not (switchboard-session-agents s))
+        (should (= 1 (length (switchboard-session-agents other))))))))
+
+(ert-deftest switchboard-test-fork-parent-reads-the-forks-command-line ()
+  (let ((switchboard--fork-parents (make-hash-table :test 'equal)))
+    (cl-letf (((symbol-function 'call-process)
+               (lambda (&rest _)
+                 (insert "/bin/zsh\n"
+                         "claude --session-id f-1 --fork-session --resume /p/proj/c-0.jsonl --settings x\n"))))
+      (should (equal (switchboard--fork-parent "f-1") "c-0"))
+      (should-not (switchboard--fork-parent "f-2")))))
+
 ;;; Subagents
 
 (defun switchboard-test--spawn (id type description &optional background)

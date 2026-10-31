@@ -196,6 +196,36 @@ nil notifies once."
        (cl-find session-id switchboard--sessions
                 :key #'switchboard-session-resume-id :test #'equal)))
 
+(defvar switchboard--fork-parents (make-hash-table :test 'equal)
+  "Claude conversation id to the one it was forked from, or `none'.")
+
+(defun switchboard--fork-parent (session-id)
+  "The conversation SESSION-ID was forked from, if a process runs it as one.
+Claude Code's daemon runs a session sent to the background as
+`--session-id NEW --fork-session --resume OLD'; OLD may be a path."
+  (let ((parent (or (gethash session-id switchboard--fork-parents)
+                    (puthash session-id
+                             (or (with-temp-buffer
+                                   (call-process "ps" nil t nil "-axww" "-o" "command=")
+                                   (goto-char (point-min))
+                                   (and (search-forward (concat "--session-id " session-id " ")
+                                                        nil t)
+                                        (re-search-forward
+                                         "--resume \\([^ \n]+\\)" (line-end-position) t)
+                                        (file-name-base (match-string 1))))
+                                 'none)
+                             switchboard--fork-parents))))
+    (and (stringp parent) parent)))
+
+(defun switchboard--adopt-fork (session-id)
+  "The session whose conversation SESSION-ID was forked from, now on it."
+  (when-let* ((session-id)
+              (parent (switchboard--fork-parent session-id))
+              (s (switchboard--find-conversation parent)))
+    (setf (switchboard-session-resume-id s) session-id)
+    (switchboard--save-soon)
+    s))
+
 (defun switchboard--work-dir (s)
   "Where S's agent works: the folder its hooks last reported, if it
 still exists, else the one it started in.  The agent can move to a
@@ -960,11 +990,13 @@ Return non-nil if any were."
   "Record EVENT for session ID; FILE holds its JSON payload.
 Called by switchboard-hook.sh through emacsclient."
   (let* ((payload (switchboard--read-payload file))
+         (conversation (alist-get 'session_id payload))
          ;; The conversation's id first: SWITCHBOARD_ID can belong to
          ;; another session.  Claude Code's daemon inherits the env of the
-         ;; session that started it, and so do the workers it runs other
-         ;; sessions' background agents in.
-         (s (or (switchboard--find-conversation (alist-get 'session_id payload))
+         ;; session that started it, and so does every session it runs
+         ;; in the background, forked from whichever terminal sent it.
+         (s (or (switchboard--find-conversation conversation)
+                (switchboard--adopt-fork conversation)
                 (switchboard--find id)))
          ;; Set when a subagent, not the main agent, sent EVENT.
          (agent-id (alist-get 'agent_id payload)))
