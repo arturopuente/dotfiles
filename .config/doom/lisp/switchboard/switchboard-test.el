@@ -28,7 +28,8 @@ recorded in `switchboard-test--notified'."
           (switchboard--git-procs (make-hash-table :test 'equal))
           (switchboard--git-timers (make-hash-table :test 'equal))
           (switchboard--pr-procs (make-hash-table :test 'equal))
-          (switchboard--pr-checked (make-hash-table :test 'equal)))
+          (switchboard--pr-checked (make-hash-table :test 'equal))
+          (switchboard--pending-agents (make-hash-table :test 'equal)))
      (cl-letf (((symbol-function 'switchboard--schedule-render) #'ignore)
                ((symbol-function 'switchboard--save-soon) #'ignore)
                ((symbol-function 'switchboard--notify)
@@ -476,6 +477,164 @@ recorded in `switchboard-test--notified'."
 (ert-deftest switchboard-test-parse-git-handles-binary-files ()
   (should (equal (switchboard--parse-git "sb/heron\n@@\n-\t-\timg.png\n4\t1\ta.el\n@@\n")
                  '("sb/heron" 4 1 0))))
+
+
+(ert-deftest switchboard-test-events-go-to-their-conversation ()
+  ;; A background agent's worker can carry another session's SWITCHBOARD_ID.
+  (switchboard-test--with-session s
+    (let ((other (switchboard--session-create :id "wren-0002" :name "wren" :harness 'claude
+                                              :root dir :dir dir :resume-id "conv-wren")))
+      (push other switchboard--sessions)
+      (switchboard-test--hook "SessionStart" '((session_id . "conv-heron")))
+      (switchboard-test--hook "SubagentStart" '((session_id . "conv-wren") (agent_id . "a1")
+                                                (agent_type . "Explore")))
+      (should-not (switchboard-session-agents s))
+      (should (= 1 (length (switchboard-session-agents other))))
+      ;; A new conversation (/clear) still goes by SWITCHBOARD_ID.
+      (switchboard-test--hook "SessionStart" '((session_id . "conv-heron-2")))
+      (should (equal (switchboard-session-resume-id s) "conv-heron-2")))))
+
+;;; Subagents
+
+(defun switchboard-test--spawn (id type description &optional background)
+  "The main agent starts subagent ID: its Agent call, then SubagentStart."
+  (switchboard-test--hook "PreToolUse"
+                          `((tool_name . "Agent")
+                            (tool_input . ((description . ,description) (subagent_type . ,type)
+                                           (run_in_background . ,(if background t :false))))))
+  (switchboard-test--hook "SubagentStart" `((agent_id . ,id) (agent_type . ,type))))
+
+(defun switchboard-test--agent (s id)
+  (cl-find id (switchboard-session-agents s) :key #'switchboard-agent-id :test #'equal))
+
+(ert-deftest switchboard-test-subagent-is-listed-with-its-task-and-tool ()
+  (switchboard-test--with-session s
+    (switchboard-test--hook "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--spawn "a1" "Explore" "find the hook fields")
+    (switchboard-test--hook "PreToolUse" '((agent_id . "a1") (agent_type . "Explore")
+                                           (tool_name . "Grep")))
+    (let ((a (switchboard-test--agent s "a1")))
+      (should (equal (switchboard-agent-description a) "find the hook fields"))
+      (should (equal (switchboard-agent-tool a) "Grep"))
+      (should (eq (switchboard-agent-status a) 'running)))
+    (should (equal (switchboard--label s) "WORKING · 1 AGENT"))
+    (switchboard-test--hook "SubagentStop" '((agent_id . "a1") (agent_type . "Explore")))
+    (should (eq (switchboard-agent-status (switchboard-test--agent s "a1")) 'done))
+    (should (equal (switchboard--label s) "WORKING"))))
+
+(ert-deftest switchboard-test-stop-with-background-agents-waits-on-them ()
+  (switchboard-test--with-session s
+    (switchboard-test--hook "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--spawn "a1" "general-purpose" "bisect the failure" t)
+    (switchboard-test--spawn "a2" "Explore" "other uses of retry" t)
+    (switchboard-test--hook "Stop" '((background_tasks
+                                      . [((id . "t1") (type . "subagent") (status . "running")
+                                          (description . "bisect the failure")
+                                          (agent_type . "general-purpose"))
+                                         ((id . "t2") (type . "subagent") (status . "running")
+                                          (description . "other uses of retry")
+                                          (agent_type . "Explore"))
+                                         ((id . "b1") (type . "shell") (status . "running")
+                                          (description . "npm run dev"))])))
+    (should (eq (switchboard-session-status s) 'agents))
+    (should (equal (switchboard--label s) "WAITING ON 2 AGENTS"))
+    ;; Not finished yet (`switchboard-notify' leaves out `agents').
+    (should-not (memq 'agents switchboard-notify))
+    (should-not (member '("heron" . ready) switchboard-test--notified))
+    (should-not (switchboard-session-unread s))
+    ;; Their tool calls don't make the session itself WORKING.
+    (switchboard-test--hook "PostToolUse" '((agent_id . "a1") (tool_name . "Bash")))
+    (should (eq (switchboard-session-status s) 'agents))
+    (switchboard-test--hook "SubagentStop" '((agent_id . "a1")))
+    (should (eq (switchboard-session-status s) 'agents))
+    ;; The last one done: the main agent takes their results.
+    (switchboard-test--hook "SubagentStop" '((agent_id . "a2")))
+    (should (eq (switchboard-session-status s) 'working))
+    (switchboard-test--hook "Stop" '((background_tasks . [])))
+    (should (eq (switchboard-session-status s) 'ready))
+    (should (equal (car switchboard-test--notified) '("heron" . ready)))))
+
+(ert-deftest switchboard-test-stop-adds-background-agents-it-missed ()
+  (switchboard-test--with-session s
+    (switchboard-test--hook "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--hook "Stop" '((background_tasks
+                                      . [((id . "t9") (type . "subagent") (status . "running")
+                                          (description . "audit deps") (agent_type . "Explore"))])))
+    (should (eq (switchboard-session-status s) 'agents))
+    (let ((a (car (switchboard-session-agents s))))
+      (should (equal (switchboard-agent-description a) "audit deps"))
+      (should (switchboard-agent-background a)))))
+
+(ert-deftest switchboard-test-stop-ends-agents-that-never-reported-stopping ()
+  (switchboard-test--with-session s
+    (switchboard-test--hook "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--spawn "a1" "Explore" "look around")
+    (switchboard-test--hook "Stop" '((background_tasks . [])))
+    (should (eq (switchboard-agent-status (switchboard-test--agent s "a1")) 'done))
+    (should (eq (switchboard-session-status s) 'ready))))
+
+(ert-deftest switchboard-test-blocked-agent-needs-you-then-goes-back ()
+  (switchboard-test--with-session s
+    (switchboard-test--hook "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--spawn "a1" "general-purpose" "fetch docs" t)
+    (switchboard-test--hook "Stop" '((background_tasks
+                                      . [((id . "a1") (type . "subagent") (status . "running")
+                                          (description . "fetch docs"))])))
+    (switchboard-test--hook "PermissionRequest"
+                            '((agent_id . "a1") (agent_type . "general-purpose")
+                              (tool_name . "WebFetch") (tool_input . ((url . "https://x.dev")))))
+    (should (eq (switchboard-session-status s) 'waiting))
+    (should (equal (switchboard-session-detail s) "general · WebFetch: https://x.dev"))
+    (should (switchboard--agents-expanded-p s))    ; listed even off screen
+    (switchboard-test--hook "PostToolUse" '((agent_id . "a1") (tool_name . "WebFetch")))
+    (should (eq (switchboard-session-status s) 'agents))
+    (should-not (switchboard-session-detail s))))
+
+(ert-deftest switchboard-test-escape-ends-only-foreground-agents ()
+  (switchboard-test--with-session s
+    (switchboard-test--hook "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--spawn "fg" "Explore" "inline")
+    (switchboard-test--spawn "bg" "Explore" "detached" t)
+    (with-temp-buffer
+      (setq switchboard--session s)
+      (switchboard--note-input 'escape))
+    (should (eq (switchboard-session-status s) 'stopped))
+    (should (eq (switchboard-agent-status (switchboard-test--agent s "fg")) 'done))
+    (should (eq (switchboard-agent-status (switchboard-test--agent s "bg")) 'running))
+    (should (equal (switchboard--label s) "STOPPED · 1 AGENT"))))
+
+(ert-deftest switchboard-test-finished-agents-drop-after-a-while ()
+  (switchboard-test--with-session s
+    (switchboard-test--spawn "a1" "Explore" "quick look")
+    (switchboard-test--hook "SubagentStop" '((agent_id . "a1")))
+    (should-not (switchboard--prune-agents))
+    (let ((a (switchboard-test--agent s "a1")))
+      (switchboard--change-agent s a :end (- (float-time) switchboard--agent-linger 1)))
+    (should (switchboard--prune-agents))
+    (should-not (switchboard-session-agents s))))
+
+(ert-deftest switchboard-test-agent-changes-leave-old-copies-alone ()
+  ;; The image cache keys on copies of sessions, which share agents.
+  (switchboard-test--with-session s
+    (switchboard-test--spawn "a1" "Explore" "look")
+    (let ((copy (copy-sequence s)))
+      (switchboard-test--hook "PreToolUse" '((agent_id . "a1") (tool_name . "Read")))
+      (should-not (switchboard-agent-tool (car (switchboard-session-agents copy))))
+      (should-not (equal copy s)))))
+
+(ert-deftest switchboard-test-draws-agent-rows ()
+  (skip-unless (image-type-available-p 'svg))
+  (switchboard-test--with-session s
+    (cl-letf (((symbol-function 'switchboard--font-size) (lambda () 15))
+              ((symbol-function 'switchboard--on-screen-p) #'ignore))
+      (let ((pal (switchboard--palette)))
+        (dotimes (i 6)
+          (switchboard-test--spawn (format "a%d" i) "Explore" (format "task %d" i) t))
+        (switchboard-test--hook "SubagentStop" '((agent_id . "a0")))
+        (should (stringp (switchboard--row s 1 400 nil pal)))      ; with its bar
+        (dolist (a (switchboard-session-agents s))
+          (should (stringp (switchboard--agent-row a nil 400 pal))))
+        (should (stringp (switchboard--agents-more-row (switchboard-session-agents s) 2 400 pal)))))))
 
 (provide 'switchboard-test)
 ;;; switchboard-test.el ends here

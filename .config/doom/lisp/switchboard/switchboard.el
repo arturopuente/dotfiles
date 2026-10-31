@@ -6,6 +6,8 @@
 ;; worktree. A side window lists them with their state:
 ;;
 ;;   WORKING    the agent is mid-turn
+;;   WAITING ON AGENTS  its turn ended, but subagents it started in the
+;;              background still run; it picks up again when they finish
 ;;   NEEDS YOU  it is waiting on a permission prompt
 ;;   ERROR      the turn died on an API error
 ;;   STOPPED    you interrupted it (ESC)
@@ -18,6 +20,10 @@
 ;; `switchboard-hook' through emacsclient. Two states have no event and
 ;; are inferred from the keys you send: ESC means STOPPED, and RET in a
 ;; Codex session means WORKING (Codex only reports when a turn ends).
+;;
+;; Subagents a Claude session starts are listed under it, with the tool
+;; each is running, for the session on screen and any with an agent that
+;; needs you; other rows show them as a bar, one segment per agent.
 ;;
 ;; Entry point: M-x switchboard.
 
@@ -106,6 +112,8 @@ nil notifies once."
 (defface switchboard-ready
   '((((background light)) :foreground "#006800") (t :foreground "#44bc44"))
   "Sessions waiting for their next prompt.")
+(defface switchboard-agents '((t :inherit switchboard-working))
+  "Sessions whose turn ended while their background subagents still run.")
 (defface switchboard-exited '((t :inherit shadow))
   "Sessions whose process has exited.")
 (defface switchboard-paused '((t :inherit shadow))
@@ -119,6 +127,8 @@ nil notifies once."
 (defface switchboard-row-working
   '((((background light)) :background "#e6ecfb" :extend t) (t :background "#15203a" :extend t))
   "Row background for sessions that are mid-turn.")
+(defface switchboard-row-agents '((t :inherit switchboard-row-working))
+  "Row background for sessions waiting on their background subagents.")
 (defface switchboard-row-ready
   '((((background light)) :background "#e3f3e3" :extend t) (t :background "#13281a" :extend t))
   "Row background for sessions waiting for their next prompt.")
@@ -131,6 +141,17 @@ nil notifies once."
 (defface switchboard-row-merged
   '((((background light)) :background "#eee6fa" :extend t) (t :background "#251c38" :extend t))
   "Row background for sessions whose pull request was merged.")
+;; The agent bar's colors differ in lightness, not only hue: Modus's
+;; status colors are all dark on a light background and blur together.
+(defface switchboard-bar-running
+  '((((background light)) :foreground "#2563eb") (t :foreground "#2fafff"))
+  "Agent bar segments for subagents that are running.")
+(defface switchboard-bar-done
+  '((((background light)) :foreground "#a9d8a9") (t :foreground "#2d5a36"))
+  "Agent bar segments for subagents that finished.")
+(defface switchboard-bar-waiting
+  '((((background light)) :foreground "#e0157f") (t :foreground "#ff66c4"))
+  "Agent bar segments for subagents that need you; they're drawn taller too.")
 (defface switchboard-header-focused
   '((((background light)) :background "#ffe58a") (t :background "#4d3f00"))
   "Background of the focused window's header, and of the selected row in the list.")
@@ -146,8 +167,14 @@ nil notifies once."
                                    (:copier nil))
   id name title named harness root dir branch buffer
   (status 'ready) unread marked task detail tokens resume-id transcript changes pr
-  cwd worktree
+  cwd worktree agents
   (changed (float-time)) (turn-start (float-time)))
+
+;; A session's subagents.  They're replaced, never changed in place: the
+;; list's image cache keys on copies of sessions, which share them.
+(cl-defstruct (switchboard-agent (:constructor switchboard--agent-create))
+  id type description tool (status 'running) background
+  (start (float-time)) end resume)
 
 (defvar switchboard--sessions nil
   "Live sessions, oldest first.")
@@ -162,6 +189,12 @@ nil notifies once."
 
 (defun switchboard--find (id)
   (cl-find id switchboard--sessions :key #'switchboard-session-id :test #'equal))
+
+(defun switchboard--find-conversation (session-id)
+  "The session running Claude conversation SESSION-ID, if any."
+  (and session-id
+       (cl-find session-id switchboard--sessions
+                :key #'switchboard-session-resume-id :test #'equal)))
 
 (defun switchboard--work-dir (s)
   "Where S's agent works: the folder its hooks last reported, if it
@@ -359,6 +392,8 @@ A new branch starts from START, or ROOT's checked-out commit."
                       :PostToolUse (funcall hook "PostToolUse")
                       :PostToolUseFailure (funcall hook "PostToolUseFailure")
                       :PermissionRequest (funcall hook "PermissionRequest")
+                      :SubagentStart (funcall hook "SubagentStart")
+                      :SubagentStop (funcall hook "SubagentStop")
                       :Stop (funcall hook "Stop")
                       :StopFailure (funcall hook "StopFailure"))))
     (make-directory (file-name-directory file) t)
@@ -793,6 +828,129 @@ BRANCH is nil when detached or not a repository; CHANGES is
           (and (or (> added 0) (> deleted 0) (> untracked 0))
                (list added deleted untracked)))))
 
+;;; Subagents
+
+(defvar switchboard--pending-agents (make-hash-table :test 'equal)
+  "Session id to its Agent tool calls whose subagent hasn't started yet,
+oldest first: (TYPE DESCRIPTION BACKGROUND) each.  SubagentStart only
+names the agent's type; the call says what it's for.")
+
+(defconst switchboard--agent-linger 60
+  "Seconds a finished subagent stays listed.")
+
+(defun switchboard--agent-live-p (a)
+  (memq (switchboard-agent-status a) '(running waiting)))
+
+(defun switchboard--live-agents (s)
+  (cl-count-if #'switchboard--agent-live-p (switchboard-session-agents s)))
+
+(defun switchboard--agent-name (a)
+  "A's type, short: general-purpose is most of them."
+  (pcase (switchboard-agent-type a)
+    ('nil "agent") ("general-purpose" "general") (type type)))
+
+(defun switchboard--expect-agent (s input)
+  "Note an Agent tool call S made with INPUT; its subagent starts next."
+  (let ((id (switchboard-session-id s)))
+    (puthash id (append (gethash id switchboard--pending-agents)
+                        (list (list (or (alist-get 'subagent_type input) "general-purpose")
+                                    (alist-get 'description input)
+                                    (eq (alist-get 'run_in_background input) t))))
+             switchboard--pending-agents)))
+
+(defun switchboard--agent (s id type)
+  "S's subagent ID, added as a TYPE agent if it isn't listed yet.
+A new one takes the description of the oldest Agent call for its type."
+  (or (cl-find id (switchboard-session-agents s) :key #'switchboard-agent-id :test #'equal)
+      (let* ((pending (gethash (switchboard-session-id s) switchboard--pending-agents))
+             (call (cl-find type pending :key #'car :test #'equal))
+             (a (switchboard--agent-create :id id :type type :description (nth 1 call)
+                                           :background (nth 2 call))))
+        (puthash (switchboard-session-id s) (remq call pending) switchboard--pending-agents)
+        (setf (switchboard-session-agents s) (append (switchboard-session-agents s) (list a)))
+        a)))
+
+(defun switchboard--change-agent (s a &rest slots)
+  "Replace S's agent A with a copy that has SLOTS, a plist; return the copy."
+  (let ((new (copy-switchboard-agent a)))
+    (cl-loop for (key value) on slots by #'cddr
+             do (setf (cl-struct-slot-value 'switchboard-agent
+                                            (intern (substring (symbol-name key) 1)) new)
+                      value))
+    (setf (switchboard-session-agents s)
+          (mapcar (lambda (x) (if (eq x a) new x)) (switchboard-session-agents s)))
+    new))
+
+(defun switchboard--end-agents (s pred)
+  "Mark S's running subagents that satisfy PRED as done."
+  (dolist (a (switchboard-session-agents s))
+    (when (and (switchboard--agent-live-p a) (funcall pred a))
+      (switchboard--change-agent s a :status 'done :end (float-time) :tool nil))))
+
+(defun switchboard--clear-agents (s)
+  (setf (switchboard-session-agents s) nil)
+  (remhash (switchboard-session-id s) switchboard--pending-agents))
+
+(defun switchboard--agent-blocked (s a)
+  "A asks for permission: S needs you, and comes back to what it was after."
+  (let ((was (switchboard-session-status s)))
+    (switchboard--change-agent
+     s a :status 'waiting
+     :resume (if (eq was 'waiting)
+                 (cl-some #'switchboard-agent-resume (switchboard-session-agents s))
+               was))))
+
+(defun switchboard--agent-resumed (s a)
+  "A, which needed you, runs again; once no agent needs you, so does S."
+  (let ((resume (switchboard-agent-resume a)))
+    (switchboard--change-agent s a :status 'running :resume nil)
+    (when (and (eq (switchboard-session-status s) 'waiting)
+               (not (cl-find 'waiting (switchboard-session-agents s)
+                             :key #'switchboard-agent-status)))
+      (setf (switchboard-session-detail s) nil)
+      (switchboard--set s (or resume 'working)))))
+
+(defun switchboard--reconcile-agents (s payload)
+  "Match S's subagents to the background work a Stop PAYLOAD lists.
+Agents it lists that S missed are added; running ones it doesn't list
+are done, since a foreground agent always ends before its turn does.
+Return how many still run."
+  (let ((tasks (alist-get 'background_tasks payload 'none)))
+    (unless (eq tasks 'none)            ; Claude Code before background_tasks
+      (let (seen)
+        (dolist (task (append tasks nil))
+          (when (equal (alist-get 'type task) "subagent")
+            (let* ((id (alist-get 'id task))
+                   (desc (alist-get 'description task))
+                   (a (or (cl-find-if (lambda (a)
+                                        (and (switchboard--agent-live-p a)
+                                             (or (equal (switchboard-agent-id a) id)
+                                                 (and desc (equal (switchboard-agent-description a)
+                                                                  desc)))))
+                                      (switchboard-session-agents s))
+                          (switchboard--agent s id (alist-get 'agent_type task)))))
+              (push (switchboard--change-agent
+                     s a :background t
+                     :description (or (switchboard-agent-description a) desc))
+                    seen))))
+        (switchboard--end-agents s (lambda (a) (not (memq a seen))))))
+    (remhash (switchboard-session-id s) switchboard--pending-agents)
+    (switchboard--live-agents s)))
+
+(defun switchboard--prune-agents ()
+  "Drop subagents that finished `switchboard--agent-linger' seconds ago.
+Return non-nil if any were."
+  (let ((cutoff (- (float-time) switchboard--agent-linger))
+        pruned)
+    (dolist (s switchboard--sessions)
+      (let ((agents (cl-remove-if (lambda (a) (and (switchboard-agent-end a)
+                                                   (< (switchboard-agent-end a) cutoff)))
+                                  (switchboard-session-agents s))))
+        (unless (equal agents (switchboard-session-agents s))
+          (setf (switchboard-session-agents s) agents
+                pruned t))))
+    pruned))
+
 (defun switchboard--finish-turn (s status)
   (setf (switchboard-session-unread s) (not (switchboard--watching-p s)))
   (switchboard--set s status))
@@ -801,13 +959,23 @@ BRANCH is nil when detached or not a repository; CHANGES is
 (defun switchboard-hook (id event &optional file)
   "Record EVENT for session ID; FILE holds its JSON payload.
 Called by switchboard-hook.sh through emacsclient."
-  (let ((payload (switchboard--read-payload file))
-        (s (switchboard--find id)))
+  (let* ((payload (switchboard--read-payload file))
+         ;; The conversation's id first: SWITCHBOARD_ID can belong to
+         ;; another session.  Claude Code's daemon inherits the env of the
+         ;; session that started it, and so do the workers it runs other
+         ;; sessions' background agents in.
+         (s (or (switchboard--find-conversation (alist-get 'session_id payload))
+                (switchboard--find id)))
+         ;; Set when a subagent, not the main agent, sent EVENT.
+         (agent-id (alist-get 'agent_id payload)))
     ;; A paused session's process may still report the turn it was cut off in.
     (when (and s (not (eq (switchboard-session-status s) 'paused)))
       (switchboard--note-cwd s (alist-get 'cwd payload))
       (pcase event
         ("SessionStart"
+         ;; Compacting keeps the conversation and its background agents.
+         (unless (equal (alist-get 'source payload) "compact")
+           (switchboard--clear-agents s))
          (setf (switchboard-session-resume-id s) (alist-get 'session_id payload))
          (switchboard--update-git s)
          (switchboard--update-tokens s payload)
@@ -820,23 +988,54 @@ Called by switchboard-hook.sh through emacsclient."
          (switchboard--update-tokens s payload)
          (switchboard--set s 'working))
         ((or "PreToolUse" "PostToolUse" "PostToolUseFailure")
-         (when (eq (switchboard-session-status s) 'waiting)
-           (setf (switchboard-session-detail s) nil))
          (when (equal event "PostToolUse")
            (switchboard--update-git-soon s))
-         (switchboard--set s 'working))
+         (if agent-id
+             ;; A subagent's tool call: it shows on the agent, not on S,
+             ;; which may well have ended its turn.
+             (let ((a (switchboard--agent s agent-id (alist-get 'agent_type payload))))
+               (when (equal event "PreToolUse")
+                 (setq a (switchboard--change-agent s a :tool (alist-get 'tool_name payload))))
+               (when (eq (switchboard-agent-status a) 'waiting)
+                 (switchboard--agent-resumed s a))
+               (switchboard--schedule-render))
+           (when (and (equal event "PreToolUse")
+                      (member (alist-get 'tool_name payload) '("Agent" "Task")))
+             (switchboard--expect-agent s (alist-get 'tool_input payload)))
+           (when (eq (switchboard-session-status s) 'waiting)
+             (setf (switchboard-session-detail s) nil))
+           (switchboard--set s 'working)))
         ("PermissionRequest"
-         (let ((input (alist-get 'tool_input payload)))
+         (let* ((input (alist-get 'tool_input payload))
+                (what (format "%s: %s" (alist-get 'tool_name payload)
+                              (or (alist-get 'command input) (alist-get 'file_path input)
+                                  (alist-get 'url input) ""))))
            (setf (switchboard-session-detail s)
-                 (format "%s: %s" (alist-get 'tool_name payload)
-                         (or (alist-get 'command input) (alist-get 'file_path input)
-                             (alist-get 'url input) ""))))
+                 (if agent-id
+                     (let ((a (switchboard--agent s agent-id (alist-get 'agent_type payload))))
+                       (switchboard--agent-blocked s a)
+                       (format "%s · %s" (switchboard--agent-name a) what))
+                   what)))
          (switchboard--set s 'waiting))
+        ("SubagentStart"
+         (switchboard--agent s agent-id (alist-get 'agent_type payload))
+         (switchboard--schedule-render))
+        ("SubagentStop"
+         (switchboard--end-agents s (lambda (a) (equal (switchboard-agent-id a) agent-id)))
+         (switchboard--update-git-soon s)
+         ;; The last background agent is done: the main agent picks up
+         ;; its results in a turn of its own.
+         (if (and (eq (switchboard-session-status s) 'agents)
+                  (zerop (switchboard--live-agents s)))
+             (switchboard--set s 'working)
+           (switchboard--schedule-render)))
         ("Stop"
          (setf (switchboard-session-detail s) nil)
          (switchboard--update-git s)
          (switchboard--update-tokens s payload)
-         (switchboard--finish-turn s 'ready))
+         (if (> (switchboard--reconcile-agents s payload) 0)
+             (switchboard--set s 'agents)
+           (switchboard--finish-turn s 'ready)))
         ("StopFailure"
          (setf (switchboard-session-detail s)
                (let ((e (or (alist-get 'error payload) (alist-get 'error_type payload)
@@ -862,6 +1061,8 @@ Called by switchboard-hook.sh through emacsclient."
   (when-let* ((s switchboard--session))
     (let ((status (switchboard-session-status s)))
       (cond ((and (eq key 'escape) (memq status '(working waiting)))
+             ;; Interrupting takes the foreground agents with it.
+             (switchboard--end-agents s (lambda (a) (not (switchboard-agent-background a))))
              (switchboard--set s 'stopped))
             ((and (eq key 'return) (eq (switchboard-session-harness s) 'codex)
                   (memq status '(ready stopped error)))
@@ -877,6 +1078,7 @@ Called by switchboard-hook.sh through emacsclient."
                                 switchboard-notify)))
       (unless (string-prefix-p "finished" event)
         (setf (switchboard-session-detail s) (string-trim event)))
+      (switchboard--clear-agents s)
       (switchboard--set s 'exited)))
   ;; A drawer whose shell exited closes its split.
   (when (buffer-local-value 'switchboard--drawer-of buf)
@@ -1000,10 +1202,11 @@ Claude sessions continue their conversation; Codex resumes its last one."
 (defvar switchboard--render-timer nil)
 (defvar switchboard--tick-timer nil)
 
-(defconst switchboard--status-order '(waiting error stopped unread working ready merged paused exited))
+(defconst switchboard--status-order
+  '(waiting error stopped unread working agents ready merged paused exited))
 (defconst switchboard--status-titles
   '((waiting . "Needs you") (error . "Errored") (stopped . "Stopped") (unread . "Finished")
-    (working . "Working") (ready . "Ready") (merged . "Merged") (paused . "Paused")
+    (working . "Working") (agents . "Waiting on agents") (ready . "Ready") (merged . "Merged") (paused . "Paused")
     (exited . "Exited")))
 
 (defun switchboard--pr-state (s)
@@ -1033,17 +1236,25 @@ session keeps its status, and its label adds MERGED."
 (defun switchboard--face (s)
   (intern (format "switchboard-%s" (switchboard--shown-status s))))
 
+(defun switchboard--agents-count (n)
+  (format "%d AGENT%s" n (if (= n 1) "" "S")))
+
 (defun switchboard--label-parts (s)
-  "S's label as ((TEXT . FACE) ...): its status, and for an exited or
-paused session whose pull request was merged, \" | \" and MERGED too."
-  (let ((status (pcase (switchboard--shown-status s)
+  "S's label as ((TEXT . FACE) ...): its status, how many subagents it
+has running, and for an exited or paused session whose pull request was
+merged, \" | \" and MERGED too."
+  (let* ((agents (switchboard--live-agents s))
+         (status (pcase (switchboard--shown-status s)
                   ('working "WORKING") ('waiting "NEEDS YOU") ('error "ERROR")
+                  ('agents (concat "WAITING ON " (switchboard--agents-count agents)))
                   ('stopped "STOPPED") ('paused "PAUSED") ('exited "EXITED") ('merged "MERGED")
                   (_ (if (switchboard-session-unread s) "READY · NEW" "READY")))))
     (cons (cons status (switchboard--face s))
+          (if (and (> agents 0) (memq (switchboard-session-status s) '(working waiting stopped)))
+              `((" · " . shadow) (,(switchboard--agents-count agents) . switchboard-working))
           (and (memq (switchboard-session-status s) '(exited paused))
                (eq (switchboard--pr-state s) 'merged)
-               '((" | " . shadow) ("MERGED" . switchboard-merged))))))
+               '((" | " . shadow) ("MERGED" . switchboard-merged)))))))
 
 (defun switchboard--label (s)
   (mapconcat #'car (switchboard--label-parts s)))
@@ -1057,11 +1268,19 @@ paused session whose pull request was merged, \" | \" and MERGED too."
       (setq x (+ x (* 1.08 (switchboard--text-width text size)))))
     (- x x0)))
 
-(defun switchboard--age (s)
-  (let ((sec (floor (- (float-time) (switchboard-session-changed s)))))
+(defun switchboard--duration (seconds)
+  (let ((sec (floor seconds)))
     (cond ((< sec 60) (format "%ds" sec))
           ((< sec 3600) (format "%dm" (/ sec 60)))
           (t (format "%dh" (/ sec 3600))))))
+
+(defun switchboard--age (s)
+  (switchboard--duration (- (float-time) (switchboard-session-changed s))))
+
+(defun switchboard--agent-age (a)
+  "How long A has run, or ran."
+  (switchboard--duration (- (or (switchboard-agent-end a) (float-time))
+                            (switchboard-agent-start a))))
 
 (defun switchboard--tokens (s)
   (let ((n (switchboard-session-tokens s)))
@@ -1214,7 +1433,7 @@ spares redrawing all the others twice a second."
 
 (defun switchboard--spinner-key (s)
   "S's spinner, for a cache key: it turns, so it never matches, while S works."
-  (and (eq (switchboard-session-status s) 'working) (float-time)))
+  (and (memq (switchboard-session-status s) '(working agents)) (float-time)))
 
 (defun switchboard--flush-images ()
   "Drop the images the last render drew that this one replaced.
@@ -1229,11 +1448,24 @@ add up to hundreds of megabytes."
         switchboard--cache (or switchboard--cache-next switchboard--cache)
         switchboard--cache-next nil))
 
+(defun switchboard--draw-spinner (svg cx cy r ink &optional width)
+  "A spinning arc of radius R at CX, CY; each redraw advances it."
+  (let ((width (or width 2)))
+    (svg-circle svg cx cy r :fill "none" :stroke ink :stroke-width width :stroke-opacity 0.35)
+    (svg-circle svg cx cy r :fill "none" :stroke ink :stroke-width width
+                :stroke-linecap "round"
+                :stroke-dasharray (format "%.1f 100" (* 1.7 r))
+                :transform (format "rotate(%d %.1f %.1f)"
+                                   (mod (round (* 270 (float-time))) 360) cx cy))))
+
 (defun switchboard--draw-chip (svg s x y w h pal)
   "The status square: filled, or outlined for a READY you've seen."
   (let* ((status (switchboard--shown-status s))
          (color (switchboard--color (switchboard--face s)))
-         (outline (and (memq status '(ready paused exited)) (not (switchboard-session-unread s))))
+         ;; Outlined: idle, or WAITING ON AGENTS, whose turn is over too.
+         (outline (or (eq status 'agents)
+                      (and (memq status '(ready paused exited))
+                           (not (switchboard-session-unread s)))))
          (ink (if outline color (plist-get pal :paper)))
          (cx (+ x (/ w 2.0)))
          (cy (+ y (/ h 2.0)))
@@ -1245,15 +1477,7 @@ add up to hundreds of megabytes."
                        :fill "none" :stroke color :stroke-width 1.5)
       (svg-rectangle svg x y w h :rx 4 :fill color))
     (pcase status
-      ('working
-       ;; A spinning arc; each redraw advances it.
-       (let ((r (* 0.27 h)))
-         (svg-circle svg cx cy r :fill "none" :stroke ink :stroke-width 2 :stroke-opacity 0.35)
-         (svg-circle svg cx cy r :fill "none" :stroke ink :stroke-width 2
-                     :stroke-linecap "round"
-                     :stroke-dasharray (format "%.1f 100" (* 1.7 r))
-                     :transform (format "rotate(%d %.1f %.1f)"
-                                        (mod (round (* 270 (float-time))) 360) cx cy))))
+      ((or 'working 'agents) (switchboard--draw-spinner svg cx cy (* 0.27 h) ink))
       ('stopped
        (let ((side (* 0.36 h)))
          (svg-rectangle svg (- cx (/ side 2)) (- cy (/ side 2)) side side :rx 1.5 :fill ink)))
@@ -1350,7 +1574,7 @@ or `closed'."
 (defun switchboard--row-tint (s pal)
   "The background S's status gives its row."
   (let ((status (switchboard--shown-status s)))
-    (if (memq status '(waiting error stopped working ready merged))
+    (if (memq status '(waiting error stopped working agents ready merged))
         (switchboard--color (intern (format "switchboard-row-%s" status)) t)
       (plist-get pal :bg))))
 
@@ -1367,6 +1591,111 @@ and its face extends to the window's edge; so rows stop a column and a
 pixel short of the edge, and end with this."
   (propertize "\n" 'face face))
 
+(defconst switchboard--agent-lines 4
+  "Most subagent lines under a session; a bar sums up all of them past that.")
+
+(defun switchboard--agents-shown (s)
+  "S's subagents in drawing order: any that need you, running, then done."
+  (cl-stable-sort (copy-sequence (switchboard-session-agents s)) #'<
+                  :key (lambda (a) (pcase (switchboard-agent-status a)
+                                     ('waiting 0) ('running 1) (_ 2)))))
+
+(defun switchboard--agents-expanded-p (s)
+  "Non-nil if S's subagents get a line each, under its row: its terminal
+is on screen, or one of them needs you.  Otherwise its row has a bar.
+Not point's row: rows would change height as you moved through them."
+  (and (switchboard-session-agents s)
+       (or (switchboard--on-screen-p s)
+           (cl-find 'waiting (switchboard-session-agents s) :key #'switchboard-agent-status))
+       t))
+
+(defun switchboard--agent-face (a &optional bar)
+  (pcase (switchboard-agent-status a)
+    ('waiting (if bar 'switchboard-bar-waiting 'switchboard-waiting))
+    ('running (if bar 'switchboard-bar-running 'switchboard-working))
+    (_ (if bar 'switchboard-bar-done 'switchboard-ready))))
+
+(defun switchboard--draw-agent-bar (svg agents x0 x1 cy size)
+  "One segment per agent in AGENTS, from X0 to X1 and centered on CY.
+One that needs you stands taller, so it shows without telling colors apart."
+  (let* ((gap 3)
+         (w (max 2 (/ (- x1 x0 (* gap (1- (length agents)))) (float (length agents)))))
+         (h (max 4 (round (* 0.38 size))))
+         (tall (round (* 0.7 size)))
+         (x x0))
+    (dolist (a agents)
+      (let ((sh (if (eq (switchboard-agent-status a) 'waiting) tall h)))
+        (svg-rectangle svg x (- cy (/ sh 2.0)) w sh :rx (/ h 2.0)
+                       :fill (switchboard--color (switchboard--agent-face a t))))
+      (setq x (+ x w gap)))))
+
+(defun switchboard--agent-indent (fs)
+  "Where a subagent line's tree line and chip go: (TREE-X . CHIP-X).
+The tree hangs from under the session's status square."
+  (let ((tree-x (+ 28 (round (* 0.35 (round (* 1.55 fs)))))))
+    (cons tree-x (+ tree-x (round (* 0.6 fs))))))
+
+(defun switchboard--agent-row (a last width pal)
+  "Image for subagent A's line under its session; LAST ends the tree.
+Its square, type, what it's for and the tool it runs, and for how long."
+  (pcase-let* ((fs (switchboard--font-size))
+               (h (round (* 1.55 fs)))
+               (cy (/ h 2.0))
+               (y (+ cy (* 0.35 fs)))
+               (`(,tree-x . ,chip-x) (switchboard--agent-indent fs))
+               (chip-w (round (* 1.25 fs)))
+               (chip-h (round (* 0.95 fs)))
+               (chip-y (/ (- h chip-h) 2.0))
+               (status (switchboard-agent-status a))
+               (color (switchboard--color (switchboard--agent-face a)))
+               (dim (plist-get pal :dim))
+               (name (switchboard--agent-name a))
+               (name-x (+ chip-x chip-w 8))
+               (age (switchboard--agent-age a))
+               (age-x (- width 10))
+               (text-x (+ name-x (switchboard--text-width name fs) 9))
+               (text (string-join (delq nil (list (switchboard-agent-description a)
+                                                  (switchboard-agent-tool a)))
+                                  " · "))
+               (svg (svg-create width h)))
+    (svg-rectangle svg 0 0 width h :fill (plist-get pal :bg))
+    (svg-line svg tree-x 0 tree-x (if last cy h) :stroke dim :stroke-opacity 0.6 :stroke-width 1.5)
+    (svg-line svg tree-x cy (- chip-x 2) cy :stroke dim :stroke-opacity 0.6 :stroke-width 1.5)
+    (if (eq status 'done)
+        (svg-rectangle svg (+ chip-x 0.75) (+ chip-y 0.75) (- chip-w 1.5) (- chip-h 1.5) :rx 3
+                       :fill "none" :stroke color :stroke-width 1.5)
+      (svg-rectangle svg chip-x chip-y chip-w chip-h :rx 3 :fill color))
+    (let ((cx (+ chip-x (/ chip-w 2.0))))
+      (if (eq status 'running)
+          (switchboard--draw-spinner svg cx cy (* 0.25 chip-h) (plist-get pal :paper) 1.5)
+        (switchboard--svg-text svg (if (eq status 'done) "✓" "?") cx (+ cy (* 0.3 chip-h))
+                               (round (* 0.8 chip-h))
+                               (if (eq status 'done) color (plist-get pal :paper))
+                               :text-anchor "middle" :font-weight "bold")))
+    (switchboard--svg-text svg name name-x y fs (if (eq status 'done) dim color)
+                           :font-weight (if (eq status 'done) "normal" "bold"))
+    (switchboard--svg-text svg (switchboard--clip
+                                text fs (- age-x (switchboard--text-width age fs) 10 text-x))
+                           text-x y fs dim)
+    (switchboard--svg-text svg age age-x y fs dim :text-anchor "end")
+    (switchboard--image svg)))
+
+(defun switchboard--agents-more-row (agents hidden width pal)
+  "Image under a session's last subagent line when HIDDEN more didn't
+fit: a bar for all its AGENTS, and +HIDDEN."
+  (let* ((fs (switchboard--font-size))
+         (h (round (* 1.3 fs)))
+         (cy (/ h 2.0))
+         (more (format "+%d" hidden))
+         (age-x (- width 10))
+         (svg (svg-create width h)))
+    (svg-rectangle svg 0 0 width h :fill (plist-get pal :bg))
+    (switchboard--draw-agent-bar svg agents (cdr (switchboard--agent-indent fs))
+                                 (- age-x (switchboard--text-width more fs) 10) cy fs)
+    (switchboard--svg-text svg more age-x (+ cy (* 0.35 fs)) fs (plist-get pal :dim)
+                           :text-anchor "end")
+    (switchboard--image svg)))
+
 (defun switchboard--row (s index width selected pal)
   "Image for S's row, WIDTH pixels wide.
 SELECTED is `focused' on point's row, which highlights it whichever window
@@ -1379,7 +1708,10 @@ has focus; another session on screen (in a split) only gets an outline."
          (color (switchboard--color (switchboard--face s)))
          (l1 (round (* 1.6 fs)))
          (l2 (if switchboard-compact 0 (round (* 1.45 fs))))
-         (h (+ l1 l2 (if switchboard-compact 2 6)))
+         ;; Subagents without a line each get a bar along the bottom.
+         (bar (and (switchboard-session-agents s) (not (switchboard--agents-expanded-p s))))
+         (bar-h (if bar (round (* 0.8 fs)) 0))
+         (h (+ l1 l2 bar-h (if switchboard-compact 2 6)))
          (y1 (+ 2 (/ (+ l1 (* 0.7 fs)) 2)))
          (y2 (+ l1 (/ (+ l2 (* 0.7 sub)) 2)))
          (chip-h (round (* 1.15 fs)))
@@ -1454,6 +1786,9 @@ has focus; another session on screen (in a split) only gets an outline."
                 (switchboard--draw-pr-icon svg 'worktree (- icon-x wt-w) (- y2 (* 0.35 small))
                                            icon-w (plist-get pal :dim))))))
         (switchboard--draw-changes svg s age-x y2 small)))
+    (when bar
+      (switchboard--draw-agent-bar svg (switchboard--agents-shown s) name-x age-x
+                                   (+ l1 l2 (/ bar-h 2.0) 1) fs))
     (switchboard--image svg)))
 
 (defun switchboard--ago (time)
@@ -1546,7 +1881,8 @@ FOCUSED means the list's window is selected."
                               `((,(funcall count 'waiting) switchboard-waiting "need you" "?")
                                 (,(funcall count 'error) switchboard-error "error" "!")
                                 (,(funcall count 'stopped) switchboard-stopped "stopped" "■")
-                                (,(funcall count 'working) switchboard-working "working" "◐")
+                                (,(+ (funcall count 'working) (funcall count 'agents))
+                                 switchboard-working "working" "◐")
                                 (,(+ (funcall count 'ready) (funcall count 'unread))
                                  switchboard-ready "ready" "✓")
                                 (,(funcall count 'merged) switchboard-merged "merged" "◆")))))
@@ -1646,12 +1982,17 @@ FOCUSED means its window is selected."
 (defun switchboard--clock ()
   "What passing time changes in the list: the spinner, while a session
 works, and the ages shown."
-  (list (and (cl-find 'working switchboard--sessions :key #'switchboard-session-status)
+  (list (and (cl-find-if (lambda (s) (or (memq (switchboard-session-status s) '(working agents))
+                                          (> (switchboard--live-agents s) 0)))
+                         switchboard--sessions)
              (float-time))
         (mapcar #'switchboard--age switchboard--sessions)
+        (mapcar (lambda (s) (mapcar #'switchboard--agent-age (switchboard-session-agents s)))
+                switchboard--sessions)
         (mapcar (lambda (e) (switchboard--ago (plist-get e :closed))) switchboard--recent)))
 
 (defun switchboard--render ()
+  (switchboard--prune-agents)
   (setq switchboard--render-timer nil
         switchboard--drawn-clock (switchboard--clock))
   (let ((pal (switchboard--palette)))
@@ -1715,7 +2056,9 @@ works, and the ages shown."
                                              (switchboard--age s) (switchboard--spinner-key s))
                                        (lambda () (switchboard--row s index width sel pal))))
                                     'switchboard-session s)
-                        (switchboard--eol bg)))))
+                        (switchboard--eol bg))
+                (when (switchboard--agents-expanded-p s)
+                  (switchboard--insert-agents s width pal bg)))))
           (when switchboard--recent
             (insert (propertize (let ((folded (and (memq 'recent switchboard--folded) t))
                                       (selected (eq at-group 'recent)))
@@ -1752,6 +2095,27 @@ works, and the ages shown."
           (force-mode-line-update)))))
   (switchboard--flush-images))
 
+(defun switchboard--insert-agents (s width pal bg)
+  "Insert a line for each of S's subagents, up to `switchboard--agent-lines'.
+They carry no `switchboard-session', so moving by rows passes over them."
+  (let* ((agents (switchboard--agents-shown s))
+         (lines (seq-take agents switchboard--agent-lines))
+         (hidden (- (length agents) (length lines))))
+    (dolist (a lines)
+      (let ((last (eq a (car (last lines)))))
+        (insert (propertize (switchboard--cached
+                             (list 'agent a last width (switchboard--agent-age a)
+                                   (and (eq (switchboard-agent-status a) 'running) (float-time)))
+                             (lambda () (switchboard--agent-row a last width pal)))
+                            'switchboard-agent-of s)
+                (switchboard--eol bg))))
+    (when (> hidden 0)
+      (insert (propertize (switchboard--cached
+                           (list 'agents-more (mapcar #'switchboard-agent-status agents) hidden width)
+                           (lambda () (switchboard--agents-more-row agents hidden width pal)))
+                          'switchboard-agent-of s)
+              (switchboard--eol bg)))))
+
 (defun switchboard--row-key ()
   "The session, group key or closed session's entry of the row at point."
   (or (get-text-property (point) 'switchboard-session)
@@ -1770,7 +2134,8 @@ works, and the ages shown."
 (defun switchboard--tick ()
   "Redraw for the spinner and ages while the list is on screen."
   (if (get-buffer-window switchboard--buffer-name t)
-      (unless (equal (switchboard--clock) switchboard--drawn-clock)
+      (unless (and (not (switchboard--prune-agents))
+                   (equal (switchboard--clock) switchboard--drawn-clock))
         (switchboard--render))
     (cancel-timer switchboard--tick-timer)
     (setq switchboard--tick-timer nil)))
@@ -2370,13 +2735,14 @@ Its terminal stays, with what it showed; on a paused session, resume it."
     (cond ((eq (switchboard-session-status s) 'paused) (switchboard-resume s))
           ((not (process-live-p proc))
            (user-error "%s isn't running; r resumes it" (switchboard--title s)))
-          ((or (not (memq (switchboard-session-status s) '(working waiting)))
+          ((or (not (memq (switchboard-session-status s) '(working waiting agents)))
                (y-or-n-p (format "Pause %s mid-turn? " (switchboard--title s))))
            ;; SIGTERM, not Ctrl-C: it lets the agent save its conversation.
            ;; ghostel's native terminal hands Emacs a pipe, which has no pid
            ;; of its own; the agent's is kept on it.
            (signal-process (or (process-get proc 'ghostel--native-pid) proc) 'SIGTERM)
            (setf (switchboard-session-detail s) nil)
+           (switchboard--clear-agents s)
            (switchboard--set s 'paused)))))
 
 (defun switchboard-resume (s)
