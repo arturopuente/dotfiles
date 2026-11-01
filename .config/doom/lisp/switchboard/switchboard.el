@@ -7,7 +7,9 @@
 ;;
 ;;   WORKING    the agent is mid-turn
 ;;   WAITING ON AGENTS  its turn ended, but subagents it started in the
-;;              background still run; it picks up again when they finish
+;;              background still run; when they finish it picks up again,
+;;              or under Codex, which keeps their results for your next
+;;              prompt, it is READY
 ;;   NEEDS YOU  it is waiting on a permission prompt
 ;;   ERROR      the turn died on an API error
 ;;   STOPPED    you interrupted it (ESC)
@@ -16,14 +18,21 @@
 ;;
 ;; Most of that comes from the harness itself. Claude Code sessions get
 ;; hooks through `--settings' (so only Switchboard sessions report), Codex
-;; gets a `notify' program, Pi loads switchboard-pi.ts with `-e', and all
+;; gets them through `-c', Pi loads switchboard-pi.ts with `-e', and all
 ;; of them call switchboard-hook.sh, which calls `switchboard-hook'
-;; through emacsclient. Pi's extension sends Claude Code's event names.
-;; Two states have no event and are inferred from the keys you send: ESC
-;; means STOPPED, and RET in a Codex session means WORKING (Codex only
-;; reports when a turn ends).
+;; through emacsclient. Codex and Pi's extension send Claude Code's event
+;; names.
 ;;
-;; Subagents a Claude session starts, or a Pi session through
+;; Codex skips hooks until you trust them with /hooks, so its sessions also
+;; get a `notify' program, which needs no trust. Until a session's hooks
+;; report, notify ends its turns and RET in it means WORKING. A Codex turn
+;; that fails sends neither Stop nor notify, only a record in its rollout,
+;; which is watched while the turn runs.
+;;
+;; ESC has no event in every harness: it is inferred from the keys you send,
+;; and means STOPPED.
+;;
+;; Subagents a Claude or Codex session starts, or a Pi session through
 ;; pi-subagents, are listed under it, with the tool each is running, for the session on screen and any with an agent that
 ;; needs you; other rows show them as a bar, one segment per agent.
 ;;
@@ -93,7 +102,7 @@ nil notifies once."
 (defconst switchboard--hook-script
   (expand-file-name "switchboard-hook.sh"
                     (file-name-directory (or load-file-name buffer-file-name)))
-  "The script Claude Code hooks, Codex notify and Pi's extension call.")
+  "The script Claude Code and Codex hooks, Codex notify and Pi's extension call.")
 
 (defconst switchboard--pi-extension
   (expand-file-name "switchboard-pi.ts" (file-name-directory switchboard--hook-script))
@@ -455,6 +464,29 @@ A new branch starts from START, or ROOT's checked-out commit."
       (insert (json-serialize (list :hooks hooks))))
     file))
 
+(defconst switchboard--codex-events
+  '("SessionStart" "UserPromptSubmit" "PreToolUse" "PostToolUse" "PermissionRequest"
+    "SubagentStart" "SubagentStop" "Stop" "Interrupt")
+  "The Codex hook events Switchboard listens to.")
+
+(defun switchboard--codex-config-args ()
+  "The `-c' arguments that make a Codex session report to Switchboard.
+Codex keeps its trust in a hook by the hook's contents, so changing a
+hook here means trusting it again with /hooks."
+  (cons "-c"
+        (cons (format "notify=[\"/bin/sh\", %S, \"codex\"]" switchboard--hook-script)
+              (mapcan
+               (lambda (event)
+                 (list "-c"
+                       (format "hooks.%s=[{hooks=[{type=\"command\",timeout=%d,command=%S}]}]"
+                               event
+                               ;; Codex caps Interrupt hooks at 3 seconds.
+                               (if (equal event "Interrupt") 3 5)
+                               (format "/bin/sh %s codex-hook %s"
+                                       (shell-quote-argument switchboard--hook-script)
+                                       event))))
+               (copy-sequence switchboard--codex-events)))))
+
 (defun switchboard--claude-background-id (s)
   "Return the `claude attach' id of S if it runs in the background.
 A session sent to the background (Ctrl-B) outlives the process in its
@@ -492,10 +524,14 @@ SWITCHBOARD_ID it took with it from S's terminal."
                      (resume (list "--continue")))
                (and prompt (list prompt)))))
     ('codex
+     ;; --no-daemon: the session stays in its terminal's process, whose
+     ;; environment has SWITCHBOARD_ID, whatever a shared server is doing.
      (append (list "codex")
-             (and resume (list "resume" "--last"))
-             (list "-c" (format "notify=[\"/bin/sh\", %S, \"codex\"]"
-                                switchboard--hook-script))
+             (cond ((and resume (switchboard-session-resume-id s))
+                    (list "resume" (switchboard-session-resume-id s)))
+                   (resume (list "resume" "--last")))
+             (list "--no-daemon")
+             (switchboard--codex-config-args)
              (and prompt (list prompt))))
     ('pi
      ;; Pi reports its session's id on SessionStart.  `--' keeps a prompt
@@ -720,6 +756,16 @@ of your own instead."
 (defun switchboard--read-project-option (&rest _)
   (abbreviate-file-name (switchboard--read-project)))
 
+(defun switchboard--harness-missing-p (program)
+  "Non-nil if PROGRAM, a harness's executable, can't be started."
+  (not (executable-find program)))
+
+(defun switchboard--harness-label (name program)
+  "NAME for the menu, saying so if PROGRAM isn't installed."
+  (if (switchboard--harness-missing-p program)
+      (format "%s (needs installation)" name)
+    name))
+
 (defun switchboard--new-with (harness)
   (let* ((args (transient-args 'switchboard-new))
          (scope (transient-scope 'switchboard-new))
@@ -760,9 +806,16 @@ of your own instead."
    ("-p" "First prompt" "--prompt=")
    ("-P" "Other project" "--project=" :reader switchboard--read-project-option)]
   ["Start"
-   ("c" "Claude" switchboard-new-claude)
-   ("x" "Codex" switchboard-new-codex)
-   ("p" "Pi" switchboard-new-pi)]
+   ;; Inapt, not just labelled: starting one makes its worktree first.
+   ("c" switchboard-new-claude
+    :description (lambda () (switchboard--harness-label "Claude" "claude"))
+    :inapt-if (lambda () (switchboard--harness-missing-p "claude")))
+   ("x" switchboard-new-codex
+    :description (lambda () (switchboard--harness-label "Codex" "codex"))
+    :inapt-if (lambda () (switchboard--harness-missing-p "codex")))
+   ("p" switchboard-new-pi
+    :description (lambda () (switchboard--harness-label "Pi" "pi"))
+    :inapt-if (lambda () (switchboard--harness-missing-p "pi")))]
   (interactive)
   (transient-setup 'switchboard-new nil nil :scope (switchboard--new-scope)))
 
@@ -779,53 +832,98 @@ of your own instead."
             (json-parse-buffer :object-type 'alist :null-object nil :false-object nil)))
       (ignore-errors (delete-file file)))))
 
+(defmacro switchboard--with-file-tail (file &rest body)
+  "Run BODY in a temp buffer at the end of the last 256 KB of FILE, if readable."
+  (declare (indent 1))
+  `(when (and ,file (file-readable-p ,file))
+     (with-temp-buffer
+       (let ((size (file-attribute-size (file-attributes ,file))))
+         (insert-file-contents ,file nil (max 0 (- size 262144)) size))
+       (goto-char (point-max))
+       ,@body)))
+
+(defun switchboard--line-json ()
+  "The current line, parsed as JSON; nil if it isn't (a cut-off first line)."
+  (ignore-errors
+    (json-parse-string (buffer-substring (line-beginning-position) (line-end-position))
+                       :object-type 'alist :null-object nil)))
+
 (defun switchboard--context-tokens (transcript)
   "Tokens in context as of the last assistant message in TRANSCRIPT."
-  (when (and transcript (file-readable-p transcript))
-    (with-temp-buffer
-      (let ((size (file-attribute-size (file-attributes transcript))))
-        (insert-file-contents transcript nil (max 0 (- size 262144)) size))
-      (goto-char (point-max))
-      (catch 'found
-        (while (search-backward "\"usage\"" nil t)
-          (let ((usage (ignore-errors
-                         (alist-get 'usage
-                                    (alist-get 'message
-                                               (json-parse-string
-                                                (buffer-substring (line-beginning-position)
-                                                                  (line-end-position))
-                                                :object-type 'alist :null-object nil))))))
-            (when usage
-              (throw 'found (+ (or (alist-get 'input_tokens usage) 0)
-                               (or (alist-get 'cache_read_input_tokens usage) 0)
-                               (or (alist-get 'cache_creation_input_tokens usage) 0)))))
-          (beginning-of-line))
-        nil))))
+  (switchboard--with-file-tail transcript
+    (catch 'found
+      (while (search-backward "\"usage\"" nil t)
+        (when-let* ((usage (alist-get 'usage (alist-get 'message (switchboard--line-json)))))
+          (throw 'found (+ (or (alist-get 'input_tokens usage) 0)
+                           (or (alist-get 'cache_read_input_tokens usage) 0)
+                           (or (alist-get 'cache_creation_input_tokens usage) 0))))
+        (beginning-of-line))
+      nil)))
+
+(defun switchboard--codex-context-tokens (rollout)
+  "Tokens in context as of the last model call in Codex's ROLLOUT.
+Its input_tokens already count the cached ones."
+  (switchboard--with-file-tail rollout
+    (catch 'found
+      (while (search-backward "\"type\":\"token_count\"" nil t)
+        ;; `info' is null on the records that only update rate limits.
+        (when-let* ((info (alist-get 'info (alist-get 'payload (switchboard--line-json))))
+                    (tokens (alist-get 'input_tokens (alist-get 'last_token_usage info))))
+          (throw 'found tokens))
+        (beginning-of-line))
+      nil)))
 
 (defun switchboard--ai-title (transcript)
   "The latest title Claude Code gave the session in TRANSCRIPT, if any."
-  (when (and transcript (file-readable-p transcript))
+  (switchboard--with-file-tail transcript
+    (when (search-backward "\"type\":\"ai-title\"" nil t)
+      (alist-get 'aiTitle (switchboard--line-json)))))
+
+(defun switchboard--codex-file (name)
+  "NAME under Codex's home folder."
+  (expand-file-name name (or (getenv "CODEX_HOME") "~/.codex")))
+
+(defun switchboard--codex-main-rollout (thread)
+  "The rollout of THREAD, if THREAD is a conversation you are having.
+Codex also runs notify for the threads it starts itself: the one that
+writes a title has no rollout, and a subagent's names its parent at the
+top of its own."
+  (when-let* ((rollout (car (file-expand-wildcards
+                             (switchboard--codex-file
+                              (format "sessions/*/*/*/rollout-*-%s.jsonl" thread))))))
     (with-temp-buffer
-      (let ((size (file-attribute-size (file-attributes transcript))))
-        (insert-file-contents transcript nil (max 0 (- size 262144)) size))
-      (goto-char (point-max))
-      (when (search-backward "\"type\":\"ai-title\"" nil t)
-        (ignore-errors
-          (alist-get 'aiTitle (json-parse-string
-                               (buffer-substring (line-beginning-position) (line-end-position))
-                               :object-type 'alist :null-object nil)))))))
+      (insert-file-contents rollout nil 0 4096)
+      (unless (search-forward "\"parent_thread_id\":\"" nil t)
+        rollout))))
+
+(defun switchboard--codex-title (id)
+  "The latest name Codex gave its thread ID, if any.
+Codex keeps these in an index of its own, not in the rollout."
+  (let ((index (switchboard--codex-file "session_index.jsonl")))
+    (when id
+      (switchboard--with-file-tail index
+        (when (search-backward (format "\"id\":%S" id) nil t)
+          (alist-get 'thread_name (switchboard--line-json)))))))
+
+(defun switchboard--harness-title (s)
+  "The title S's harness gave it, if any."
+  (if (eq (switchboard-session-harness s) 'codex)
+      (switchboard--codex-title (switchboard-session-resume-id s))
+    (switchboard--ai-title (switchboard-session-transcript s))))
 
 (defun switchboard--update-tokens (s payload)
   "Refresh S's token count and, unless you named it, its title."
   (when-let* ((path (alist-get 'transcript_path payload)))
     (setf (switchboard-session-transcript s) path))
-  ;; Pi's extension sends both; Claude Code's are in its transcript.
+  ;; Pi's extension sends both; the others' are in their transcripts.
   (when-let* ((tokens (or (alist-get 'tokens payload)
-                          (switchboard--context-tokens (switchboard-session-transcript s)))))
+                          (funcall (if (eq (switchboard-session-harness s) 'codex)
+                                       #'switchboard--codex-context-tokens
+                                     #'switchboard--context-tokens)
+                                   (switchboard-session-transcript s)))))
     (setf (switchboard-session-tokens s) tokens))
   (unless (switchboard-session-named s)
-    (let ((title (or (alist-get 'title payload)
-                     (switchboard--ai-title (switchboard-session-transcript s)))))
+    (let ((title (or (alist-get 'title payload) (switchboard--harness-title s))))
       (when (and title (not (equal title (switchboard-session-title s))))
         (setf (switchboard-session-title s) title)
         (switchboard--rename-buffer s)
@@ -1025,14 +1123,19 @@ names the agent's type; the call says what it's for.")
 (defun switchboard--agent-name (a)
   "A's type, short: general-purpose is most of them."
   (pcase (switchboard-agent-type a)
-    ('nil "agent") ("general-purpose" "general") (type type)))
+    ('nil "agent") ((or "general-purpose" "default") "general") (type type)))
 
 (defun switchboard--expect-agent (s input)
-  "Note an Agent tool call S made with INPUT; its subagent starts next."
-  (let ((id (switchboard-session-id s)))
+  "Note an Agent tool call S made with INPUT; its subagent starts next.
+Codex's spawn_agent names a task and encrypts the rest."
+  (let ((id (switchboard-session-id s))
+        (task (alist-get 'task_name input)))
     (puthash id (append (gethash id switchboard--pending-agents)
-                        (list (list (or (alist-get 'subagent_type input) "general-purpose")
-                                    (alist-get 'description input)
+                        (list (list (or (alist-get 'subagent_type input)
+                                        (alist-get 'agent_type input)
+                                        (if task "default" "general-purpose"))
+                                    (or (alist-get 'description input)
+                                        (and task (subst-char-in-string ?_ ?\s task)))
                                     (eq (alist-get 'run_in_background input) t))))
              switchboard--pending-agents)))
 
@@ -1134,6 +1237,64 @@ Return non-nil if any were."
   (setf (switchboard-session-unread s) (not (switchboard--watching-p s)))
   (switchboard--set s status))
 
+(defvar switchboard--codex-hooked (make-hash-table :test 'equal)
+  "Ids of Codex sessions whose hooks have reported, so Codex trusts them.")
+
+(defun switchboard--codex-untrusted-p (s)
+  "Non-nil if S is a Codex session whose hooks haven't reported."
+  (and (eq (switchboard-session-harness s) 'codex)
+       (not (gethash (switchboard-session-id s) switchboard--codex-hooked))))
+
+(defvar switchboard--codex-turns (make-hash-table :test 'equal)
+  "Session id to the Codex turn its last prompt started.")
+
+(defvar switchboard--codex-sizes (make-hash-table :test 'equal)
+  "Rollout to its size when last read for errors.")
+
+(defvar switchboard--codex-watch-timer nil)
+
+(defun switchboard--codex-turn-error (rollout turn)
+  "Why TURN failed, from Codex's ROLLOUT; nil if it hasn't, or hasn't ended."
+  (switchboard--with-file-tail rollout
+    (catch 'done
+      (while (search-backward "\"type\":\"task_complete\"" nil t)
+        (let ((payload (alist-get 'payload (switchboard--line-json))))
+          (when (equal (alist-get 'type payload) "task_complete")
+            (throw 'done (and (equal (alist-get 'turn_id payload) turn)
+                              (when-let* ((e (alist-get 'error payload)))
+                                (or (alist-get 'message e) "API error"))))))
+        (beginning-of-line))
+      nil)))
+
+(defun switchboard--codex-check-errors ()
+  "Mark Codex sessions whose turn failed.  Return non-nil if any still runs."
+  (let (running)
+    (dolist (s switchboard--sessions running)
+      (when-let* (((eq (switchboard-session-harness s) 'codex))
+                  ((eq (switchboard-session-status s) 'working))
+                  (turn (gethash (switchboard-session-id s) switchboard--codex-turns))
+                  (rollout (switchboard-session-transcript s)))
+        (let ((size (file-attribute-size (file-attributes rollout))))
+          (unless (eql size (gethash rollout switchboard--codex-sizes))
+            (puthash rollout size switchboard--codex-sizes)
+            (when-let* ((why (switchboard--codex-turn-error rollout turn)))
+              (setf (switchboard-session-detail s) why)
+              (switchboard--finish-turn s 'error))))
+        (when (eq (switchboard-session-status s) 'working)
+          (setq running t))))))
+
+(defun switchboard--codex-watch-tick ()
+  (unless (switchboard--codex-check-errors)
+    (cancel-timer switchboard--codex-watch-timer)
+    (setq switchboard--codex-watch-timer nil)))
+
+(defun switchboard--codex-watch-errors (s payload)
+  "Watch the turn PAYLOAD, a prompt S was sent, starts."
+  (puthash (switchboard-session-id s) (alist-get 'turn_id payload) switchboard--codex-turns)
+  (unless switchboard--codex-watch-timer
+    (setq switchboard--codex-watch-timer
+          (run-at-time 2 2 #'switchboard--codex-watch-tick))))
+
 ;;;###autoload
 (defun switchboard-hook (id event &optional file)
   "Record EVENT for session ID; FILE holds its JSON payload.
@@ -1155,6 +1316,12 @@ Called by switchboard-hook.sh through emacsclient."
     ;; A paused session's process may still report the turn it was cut off in.
     (when (and s (not (eq (switchboard-session-status s) 'paused)))
       (switchboard--note-cwd s (alist-get 'cwd payload))
+      (when (and (eq (switchboard-session-harness s) 'codex) (not (equal event "notify")))
+        (puthash (switchboard-session-id s) t switchboard--codex-hooked)
+        ;; Hooks you trust mid-session never sent that session's SessionStart.
+        (when (and conversation (not (switchboard-session-resume-id s)))
+          (setf (switchboard-session-resume-id s) conversation)
+          (switchboard--save-soon)))
       (pcase event
         ("SessionStart"
          ;; Compacting keeps the conversation and its background agents,
@@ -1171,7 +1338,9 @@ Called by switchboard-hook.sh through emacsclient."
            (switchboard--save-soon))
          (setf (switchboard-session-detail s) nil)
          (switchboard--update-tokens s payload)
-         (switchboard--set s 'working))
+         (switchboard--set s 'working)
+         (when (eq (switchboard-session-harness s) 'codex)
+           (switchboard--codex-watch-errors s payload)))
         ((or "PreToolUse" "PostToolUse" "PostToolUseFailure")
          (when (equal event "PostToolUse")
            (switchboard--update-git-soon s))
@@ -1185,11 +1354,18 @@ Called by switchboard-hook.sh through emacsclient."
                  (switchboard--agent-resumed s a))
                (switchboard--schedule-render))
            (when (and (equal event "PreToolUse")
-                      (member (alist-get 'tool_name payload) '("Agent" "Task")))
+                      (let ((tool (or (alist-get 'tool_name payload) "")))
+                        (or (member tool '("Agent" "Task"))
+                            (string-suffix-p "spawn_agent" tool))))
              (switchboard--expect-agent s (alist-get 'tool_input payload)))
-           (when (eq (switchboard-session-status s) 'waiting)
-             (setf (switchboard-session-detail s) nil))
-           (switchboard--set s 'working)))
+           ;; The main agent running a tool, here Codex polling wait_agent,
+           ;; doesn't answer a prompt one of its agents is waiting on.
+           (unless (and (eq (switchboard-session-status s) 'waiting)
+                        (cl-find 'waiting (switchboard-session-agents s)
+                                 :key #'switchboard-agent-status))
+             (when (eq (switchboard-session-status s) 'waiting)
+               (setf (switchboard-session-detail s) nil))
+             (switchboard--set s 'working))))
         ("PermissionRequest"
          (let* ((input (alist-get 'tool_input payload))
                 (what (format "%s: %s" (alist-get 'tool_name payload)
@@ -1208,44 +1384,69 @@ Called by switchboard-hook.sh through emacsclient."
            (when-let* ((desc (alist-get 'description payload)))
              (unless (switchboard-agent-description a)
                (setq a (switchboard--change-agent s a :description desc))))
-           (when (alist-get 'background payload)
+           ;; Codex's agents all outlive the turn that spawned them, even
+           ;; one you interrupt.
+           (when (or (alist-get 'background payload)
+                     (eq (switchboard-session-harness s) 'codex))
              (switchboard--change-agent s a :background t)))
          (switchboard--schedule-render))
         ("SubagentStop"
+         (when-let* ((a (cl-find-if (lambda (a) (and (equal (switchboard-agent-id a) agent-id)
+                                                     (eq (switchboard-agent-status a) 'waiting)))
+                                    (switchboard-session-agents s))))
+           (switchboard--agent-resumed s a))
          (switchboard--end-agents s (lambda (a) (equal (switchboard-agent-id a) agent-id)))
          (switchboard--update-git-soon s)
          ;; The last background agent is done: the main agent picks up
-         ;; its results in a turn of its own.
-         (if (and (eq (switchboard-session-status s) 'agents)
-                  (zerop (switchboard--live-agents s)))
-             (switchboard--set s 'working)
-           (switchboard--schedule-render)))
+         ;; its results in a turn of its own.  Codex's waits for your next
+         ;; prompt instead.
+         (cond ((not (and (eq (switchboard-session-status s) 'agents)
+                          (zerop (switchboard--live-agents s))))
+                (switchboard--schedule-render))
+               ((eq (switchboard-session-harness s) 'codex)
+                (switchboard--finish-turn s 'ready))
+               (t (switchboard--set s 'working))))
         ("Stop"
-         (setf (switchboard-session-detail s) nil)
          (switchboard--update-git s)
          (switchboard--update-tokens s payload)
-         (if (> (switchboard--reconcile-agents s payload) 0)
-             (switchboard--set s 'agents)
-           (switchboard--finish-turn s 'ready)))
+         (let ((live (switchboard--reconcile-agents s payload))
+               (blocked (cl-remove 'waiting (switchboard-session-agents s)
+                                   :key #'switchboard-agent-status :test-not #'eq)))
+           ;; An agent still needs you, and S waits on it once you answer.
+           (if blocked
+               (dolist (a blocked) (switchboard--change-agent s a :resume 'agents))
+             (setf (switchboard-session-detail s) nil)
+             (if (> live 0)
+                 (switchboard--set s 'agents)
+               (switchboard--finish-turn s 'ready)))))
         ("StopFailure"
          (setf (switchboard-session-detail s)
                (let ((e (or (alist-get 'error payload) (alist-get 'error_type payload)
                             (alist-get 'message payload))))
                  (if (stringp e) e "API error")))
          (switchboard--finish-turn s 'error))
-        ("Aborted"                      ; Pi: you interrupted it
+        ((or "Aborted" "Interrupt")     ; Pi, Codex: you interrupted it
          (when (memq (switchboard-session-status s) '(working waiting))
            (switchboard--stop-turn s)))
         ("SessionInfo"                  ; Pi: its name changed
          (switchboard--update-tokens s payload)
          (switchboard--schedule-render))
         ("notify"                       ; Codex: a turn finished
-         (setf (switchboard-session-detail s) nil)
-         (switchboard--finish-turn s 'ready)))))
+         ;; Stop says the same, and knows about agents still running.
+         (when-let* (((switchboard--codex-untrusted-p s))
+                     (thread (alist-get 'thread-id payload))
+                     (rollout (switchboard--codex-main-rollout thread)))
+           (setf (switchboard-session-resume-id s) thread)
+           (switchboard--update-tokens s `((transcript_path . ,rollout)))
+           (switchboard--save-soon)
+           (setf (switchboard-session-detail s) nil)
+           (switchboard--finish-turn s 'ready)
+           (message "Switchboard: %s reports little until you trust its hooks: run /hooks in it"
+                    (switchboard--title s)))))))
   nil)
 
-;; No event marks an interrupt, and Codex has none for a turn starting, so
-;; watch what goes to the terminal. These are ghostel internals: every key
+;; Claude Code has no event for an interrupt, and Codex without its hooks has
+;; none for a turn starting, so watch what goes to the terminal. These are ghostel internals: every key
 ;; ends up in one of them, whichever keymap or evil state sent it.
 (defun switchboard--note-key (key-name &rest _)
   (switchboard--note-input (pcase key-name ("escape" 'escape) ("return" 'return))))
@@ -1255,8 +1456,11 @@ Called by switchboard-hook.sh through emacsclient."
   (switchboard--note-input (pcase string ((or "\e" "\x03") 'escape) ("\r" 'return))))
 
 (defun switchboard--stop-turn (s)
-  "You interrupted S's turn, which takes its foreground agents with it."
-  (switchboard--end-agents s (lambda (a) (not (switchboard-agent-background a))))
+  "You interrupted S's turn, which takes its foreground agents with it.
+So too any agent waiting on a prompt: under Codex, ESC aborts its turn
+and no SubagentStop follows."
+  (switchboard--end-agents s (lambda (a) (or (not (switchboard-agent-background a))
+                                             (eq (switchboard-agent-status a) 'waiting))))
   (switchboard--set s 'stopped))
 
 (defun switchboard--note-input (key)
@@ -1264,7 +1468,7 @@ Called by switchboard-hook.sh through emacsclient."
     (let ((status (switchboard-session-status s)))
       (cond ((and (eq key 'escape) (memq status '(working waiting)))
              (switchboard--stop-turn s))
-            ((and (eq key 'return) (eq (switchboard-session-harness s) 'codex)
+            ((and (eq key 'return) (switchboard--codex-untrusted-p s)
                   (memq status '(ready stopped error)))
              (switchboard--set s 'working))))))
 
@@ -1386,7 +1590,8 @@ Return the ones added.  Sessions whose directory is gone are dropped."
 ;;;###autoload
 (defun switchboard-resume-all ()
   "Restore saved sessions, then restart every exited one.
-Claude sessions continue their conversation; Codex resumes its last one."
+Each continues its conversation, or if it never reported one, the
+folder's latest."
   (interactive)
   (switchboard--load)
   (let ((exited (cl-remove-if-not (lambda (s) (eq (switchboard-session-status s) 'exited))
@@ -2793,15 +2998,14 @@ Order: permission prompts (oldest first), errors, then unread finished turns."
     (switchboard--render)))
 
 (defun switchboard-rename (s name)
-  "Call session S NAME from now on; Claude's titles no longer replace it.
-An empty NAME hands naming back to Claude."
+  "Call session S NAME from now on; its agent's titles no longer replace it.
+An empty NAME hands naming back to the agent."
   (interactive (let ((s (switchboard--at-point)))
-                 (list s (read-string "Rename to (empty: let Claude name it): "
+                 (list s (read-string "Rename to (empty: let the agent name it): "
                                       (switchboard--title s)))))
   (if (string-blank-p name)
       (setf (switchboard-session-named s) nil
-            (switchboard-session-title s)
-            (switchboard--ai-title (switchboard-session-transcript s)))
+            (switchboard-session-title s) (switchboard--harness-title s))
     (setf (switchboard-session-title s) name
           (switchboard-session-named s) t))
   (switchboard--rename-buffer s)
