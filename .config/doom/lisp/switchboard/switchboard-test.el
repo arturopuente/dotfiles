@@ -930,13 +930,13 @@ recorded in `switchboard-test--notified'."
 (ert-deftest switchboard-test-pi-command ()
   (switchboard-test--with-session s
     (setf (switchboard-session-harness s) 'pi)
-    (should (equal (switchboard--command s "-x first")
-                   (list "pi" "-e" switchboard--pi-extension "--" "-x first")))
-    (should (equal (switchboard--command s nil t)
-                   (list "pi" "-e" switchboard--pi-extension "--continue")))
-    (setf (switchboard-session-resume-id s) "01a197b5")
-    (should (equal (switchboard--command s nil t)
-                   (list "pi" "-e" switchboard--pi-extension "--session-id" "01a197b5")))))
+    (let ((base (list "pi" "-e" switchboard--pi-extension
+                      "--append-system-prompt" (switchboard--sb-instructions s))))
+      (should (equal (switchboard--command s "-x first") (append base '("--" "-x first"))))
+      (should (equal (switchboard--command s nil t) (append base '("--continue"))))
+      (setf (switchboard-session-resume-id s) "01a197b5")
+      (should (equal (switchboard--command s nil t)
+                     (append base '("--session-id" "01a197b5")))))))
 
 (ert-deftest switchboard-test-pi-turn ()
   (switchboard-test--with-pi-session s
@@ -1043,6 +1043,593 @@ recorded in `switchboard-test--notified'."
                (lambda (_) (error "Looked for a fork"))))
       (switchboard-test--hook "SessionStart" '((session_id . "01a197b5") (source . "startup")))
       (should (equal (switchboard-session-resume-id s) "01a197b5")))))
+
+;;; Helpers
+
+(defvar switchboard-test--sent nil
+  "(SESSION-TITLE . TEXT) typed into terminals, newest first.")
+
+(defalias 'switchboard-test--real-notify (symbol-function 'switchboard--notify))
+
+(defmacro switchboard-test--with-helpers (var &rest body)
+  "Like `switchboard-test--with-session', with spawning and typing stubbed out."
+  (declare (indent 1))
+  `(switchboard-test--with-session ,var
+     (let ((switchboard-test--sent nil)
+           (switchboard--helper-results (make-hash-table :test 'equal)))
+       (setf (switchboard-session-buffer ,var) (generate-new-buffer " *sb-test*"))
+       (unwind-protect
+           (cl-letf (((symbol-function 'switchboard--spawn)
+                      (lambda (s &optional prompt _resume)
+                        (setf (switchboard-session-buffer s) (generate-new-buffer " *sb-test*")
+                              (switchboard-session-task s) prompt)
+                        (switchboard--set s 'working)))
+                     ((symbol-function 'switchboard--send)
+                      (lambda (s text)
+                        (push (cons (switchboard--title s) text) switchboard-test--sent)))
+                     ((symbol-function 'switchboard--update-git) #'ignore)
+                     ((symbol-function 'switchboard--update-git-soon) #'ignore)
+                     ((symbol-function 'switchboard--update-tokens) #'ignore)
+                     ((symbol-function 'executable-find) (lambda (&rest _) "/bin/true"))
+                     ((symbol-function 'run-at-time) #'ignore)
+                     ((symbol-function 'switchboard--clear-notification) #'ignore)
+                     ((symbol-function 'switchboard--on-screen-p)
+                      (lambda (s) (eq s (bound-and-true-p switchboard-test--on-screen)))))
+             ,@body)
+         (dolist (s switchboard--sessions)
+           (when (buffer-live-p (switchboard-session-buffer s))
+             (kill-buffer (switchboard-session-buffer s))))))))
+
+(defvar switchboard-test--on-screen nil)
+
+(defun switchboard-test--sb (caller &rest args)
+  "Run `sb ARGS' as CALLER through the real entry point: (CODE . OUTPUT)."
+  (let ((file (make-temp-file "sb-test-args"))
+        (reply (make-temp-file "sb-test-reply")))
+    (unwind-protect
+        (progn
+          ;; What bin/sb writes.
+          (with-temp-file file
+            (dolist (a args)
+              (insert "\""
+                      (replace-regexp-in-string "\"" "\\\\\"" (string-replace "\\" "\\\\" a) t)
+                      "\"\n")))
+          (switchboard-sb (switchboard-session-id caller) file reply)
+          (with-temp-buffer
+            (insert-file-contents reply)
+            (goto-char (point-min))
+            (let ((code (read (current-buffer))))
+              (forward-line 1)
+              (cons code (string-trim (buffer-substring (point) (point-max)))))))
+      (delete-file file)
+      (delete-file reply))))
+
+(defun switchboard-test--helper (name)
+  (cl-find name switchboard--sessions :key #'switchboard--title :test #'equal))
+
+(defun switchboard-test--event (s event &optional payload)
+  "Send EVENT as session S, whichever it is."
+  (let ((file (and payload (make-temp-file "switchboard-payload" nil ".json"))))
+    (when file (with-temp-file file (insert (json-serialize payload))))
+    (switchboard-hook (switchboard-session-id s) event file)))
+
+(defun switchboard-test--quiet (s)
+  "Nobody has typed in S for a while."
+  (setf (switchboard-session-last-input s) nil))
+
+(ert-deftest switchboard-test-sb-run-starts-a-helper-under-its-parent ()
+  (switchboard-test--with-helpers s
+    (let ((out (switchboard-test--sb s "run" "--agent" "codex" "--name" "reviewer" "check it")))
+      (should (= (car out) 0))
+      (should (string-match-p "Started reviewer (codex)" (cdr out))))
+    (let ((h (switchboard-test--helper "reviewer")))
+      (should (eq (switchboard-session-harness h) 'codex))
+      (should (equal (switchboard-session-task h) "check it"))
+      (should (eq (switchboard--parent h) s))
+      (should (eq (switchboard-session-status h) 'working))
+      ;; Under its parent, not in a group of its own.
+      (should-not (memq h (switchboard--visible))))))
+
+(ert-deftest switchboard-test-sb-defaults-to-the-callers-agent ()
+  (switchboard-test--with-helpers s
+    (setf (switchboard-session-harness s) 'pi)
+    (switchboard-test--sb s "run" "--name" "a" "go")
+    (should (eq (switchboard-session-harness (switchboard-test--helper "a")) 'pi))))
+
+(ert-deftest switchboard-test-sb-text-is-never-code ()
+  (switchboard-test--with-helpers s
+    (let ((task "say \"hi\" \\ (kill-emacs) $(touch /tmp/x) `id`\nsecond line"))
+      (should (= (car (switchboard-test--sb s "run" "--name" "a" task)) 0))
+      (should (equal (switchboard-session-task (switchboard-test--helper "a")) task)))))
+
+(ert-deftest switchboard-test-sb-a-task-starting-with-a-dash-stays-a-task ()
+  (switchboard-test--with-helpers s
+    ;; The agent's command line would read it as an option otherwise.
+    (should (= (car (switchboard-test--sb s "run" "--name" "a" "-x do it")) 0))
+    (should (equal (switchboard-session-task (switchboard-test--helper "a")) "Task: -x do it"))))
+
+(ert-deftest switchboard-test-sb-refuses-bad-runs ()
+  (switchboard-test--with-helpers s
+    (should (= (car (switchboard-test--sb s "run")) 1))
+    (should (= (car (switchboard-test--sb s "run" "two" "tasks")) 1))
+    (should (= (car (switchboard-test--sb s "run" "--name" "Bad Name" "go")) 1))
+    (should (= (car (switchboard-test--sb s "run" "--agent" "cursor" "go")) 1))
+    (should (= (car (switchboard-test--sb s "frobnicate")) 1))
+    (should (= (car (switchboard-test--sb s "run" "--name" "a" "go")) 0))
+    (should (= (car (switchboard-test--sb s "run" "--name" "a" "again")) 1))))
+
+(ert-deftest switchboard-test-sb-goes-two-levels-deep ()
+  (switchboard-test--with-helpers s
+    (should (= (car (switchboard-test--sb s "run" "--name" "one" "go")) 0))
+    (let ((one (switchboard-test--helper "one")))
+      (should (= (car (switchboard-test--sb one "run" "--name" "two" "go")) 0))
+      (let* ((two (switchboard-test--helper "two"))
+             (out (switchboard-test--sb two "run" "--name" "three" "go")))
+        (should (eq (switchboard--parent two) one))
+        (should (= (car out) 1))
+        (should (string-match-p "levels deep" (cdr out)))))))
+
+(ert-deftest switchboard-test-sb-limits-a-whole-tree-to-ten ()
+  (switchboard-test--with-helpers s
+    (dotimes (i 9)
+      (should (= (car (switchboard-test--sb s "run" "--name" (format "h%d" i) "go")) 0)))
+    ;; The tenth comes from a helper: the limit is the tree's, not each session's.
+    (should (= (car (switchboard-test--sb (switchboard-test--helper "h0")
+                                          "run" "--name" "nested" "go"))
+               0))
+    (let ((out (switchboard-test--sb s "run" "--name" "eleven" "go")))
+      (should (= (car out) 1))
+      (should (string-match-p "10 helpers running" (cdr out))))
+    ;; A finished one frees a place.
+    (switchboard-test--event (switchboard-test--helper "h1") "Stop")
+    (should (= (car (switchboard-test--sb s "run" "--name" "eleven" "go")) 0))))
+
+(ert-deftest switchboard-test-sb-only-reaches-your-own-helpers ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "mine" "go")
+    (let ((mine (switchboard-test--helper "mine")))
+      (switchboard-test--sb mine "run" "--name" "deeper" "go")
+      (should (= (car (switchboard-test--sb s "send" "deeper" "hi")) 1))
+      (should (= (car (switchboard-test--sb s "stop" "deeper")) 1))
+      (should (switchboard-test--helper "deeper"))
+      (should (= (car (switchboard-test--sb mine "report" "x")) 0))
+      (should (= (car (switchboard-test--sb s "report" "x")) 1)))))
+
+(ert-deftest switchboard-test-sb-send-wont-answer-permission-prompts ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "go")
+    (let ((a (switchboard-test--helper "a")))
+      (should (= (car (switchboard-test--sb s "send" "a" "keep going")) 0))
+      (should (equal (car switchboard-test--sent) '("a" . "keep going")))
+      (switchboard-test--event a "PermissionRequest"
+                               '((tool_name . "Bash") (tool_input . ((command . "rm -rf /")))))
+      (setq switchboard-test--sent nil)
+      (let ((out (switchboard-test--sb s "send" "a" "yes")))
+        (should (= (car out) 1))
+        (should (string-match-p "only the user" (cdr out))))
+      (should-not switchboard-test--sent))))
+
+(ert-deftest switchboard-test-helper-result-waits-until-the-parent-is-free ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--event s "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (let ((a (switchboard-test--helper "a")))
+      (switchboard-test--sb a "report" "found \"it\"")
+      (switchboard-test--quiet s)
+      (switchboard-test--event a "Stop")
+      ;; The parent is mid-turn: it can't take it yet.
+      (should-not switchboard-test--sent)
+      (should (switchboard-session-pending a))
+      (switchboard-test--event s "Stop")
+      (should (equal (car switchboard-test--sent)
+                     '("heron" . "<sb from=\"a\" status=\"finished\">found \"it\"</sb>")))
+      (should-not (switchboard-session-pending a))
+      (should (switchboard-session-told a)))))
+
+(ert-deftest switchboard-test-helper-result-names-its-branch ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "work")
+    (let ((a (switchboard-test--helper "a")))
+      (setf (switchboard-session-worktree a) t (switchboard-session-branch a) "sb/a-1")
+      (should (string-match-p "branch=\"sb/a-1\"" (switchboard--helper-report-text a)))
+      (should (string-match-p "No report; see: sb read a" (switchboard--helper-report-text a))))))
+
+(ert-deftest switchboard-test-long-helper-report-is-cut ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "work")
+    (let ((a (switchboard-test--helper "a")))
+      (setf (switchboard-session-report a) (make-string 5000 ?x))
+      (let ((text (switchboard--helper-report-text a)))
+        (should (< (length text) 2200))
+        (should (string-match-p "sb read a" text))))))
+
+(ert-deftest switchboard-test-helper-result-holds-off-while-you-type ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (setf (switchboard-session-status s) 'ready
+          (switchboard-session-last-input s) (float-time))
+    (switchboard-test--event (switchboard-test--helper "a") "Stop")
+    (should-not switchboard-test--sent)
+    (switchboard-test--quiet s)
+    (switchboard--deliver-reports s)
+    (should switchboard-test--sent)))
+
+(ert-deftest switchboard-test-parent-waits-on-running-helpers ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--event s "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (switchboard-test--event s "Stop")
+    (should (eq (switchboard-session-status s) 'agents))
+    (should (equal (switchboard--label s) "WAITING ON 1 AGENT"))
+    (let ((a (switchboard-test--helper "a")))
+      (switchboard-test--quiet s)
+      (switchboard-test--event a "Stop")
+      (should switchboard-test--sent))))
+
+(ert-deftest switchboard-test-sb-wait-takes-the-result-itself ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--event s "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (should (= (car (switchboard-test--sb s "wait" "a")) 3))
+    (let ((a (switchboard-test--helper "a")))
+      (switchboard-test--sb a "report" "done")
+      (switchboard-test--event a "Stop")
+      (let ((out (switchboard-test--sb s "wait" "a")))
+        (should (= (car out) 0))
+        (should (string-match-p "done" (cdr out))))
+      ;; It already has it: nothing gets typed in as well.
+      (switchboard-test--event s "Stop")
+      (should-not switchboard-test--sent))))
+
+(ert-deftest switchboard-test-sb-wait-result-ends-a-parents-wait ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (setf (switchboard-session-status s) 'agents)
+    (let ((a (switchboard-test--helper "a")))
+      (switchboard-test--quiet s)
+      (setf (switchboard-session-last-input s) (float-time))
+      (switchboard-test--event a "Stop")
+      (switchboard-test--sb s "wait" "a")
+      (switchboard--deliver-reports s)
+      (should (eq (switchboard-session-status s) 'ready)))))
+
+(ert-deftest switchboard-test-helper-needing-you-shows-on-its-parent ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--event s "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (let ((a (switchboard-test--helper "a")))
+      (should-not (switchboard--agents-expanded-p
+                   (switchboard--session-create :id "other" :name "o" :dir "/" :root "/")))
+      (should-not (switchboard--agents-expanded-p s))
+      (switchboard-test--event a "PermissionRequest"
+                               '((tool_name . "Bash") (tool_input . ((command . "ls")))))
+      (should (eq (switchboard--shown-status s) 'waiting))
+      (should (equal (switchboard--label s) "NEEDS YOU · 1 AGENT"))
+      (should (switchboard--agents-expanded-p s))
+      ;; Its own status stays, and the queue goes to the one that asked.
+      (should-not (eq (switchboard-session-status s) 'waiting))
+      (cl-letf (((symbol-function 'switchboard-open)
+                 (lambda (x) (should (eq x a))))
+                ((symbol-function 'switchboard--main-window) #'selected-window))
+        (switchboard-next-attention)))))
+
+(ert-deftest switchboard-test-helper-finishing-doesnt-notify-you ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (let ((a (switchboard-test--helper "a"))
+          (posted nil))
+      ;; The real `switchboard--notify', stopped only where it would post.
+      (cl-letf (((symbol-function 'switchboard--notify)
+                 (symbol-function 'switchboard-test--real-notify))
+                ((symbol-function 'frame-focus-state) #'ignore)
+                ((symbol-function 'start-process)
+                 (lambda (&rest args) (push args posted) nil)))
+        (let ((switchboard-notify '(waiting ready error exited)))
+          (switchboard-test--event a "Stop")
+          (should-not posted)
+          (should-not (switchboard-session-unread a))
+          ;; A prompt or an error is still yours.
+          (switchboard-test--event a "StopFailure" '((error . "boom")))
+          (should posted))))))
+
+(ert-deftest switchboard-test-finished-helper-is-cleaned-up-after-a-while ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (let ((a (switchboard-test--helper "a")))
+      (switchboard-test--sb a "report" "the answer")
+      (switchboard-test--quiet s)
+      (switchboard-test--event a "Stop")
+      (switchboard-test--event s "Stop")
+      (switchboard--prune-helpers)
+      (should (memq a switchboard--sessions))
+      (setf (switchboard-session-told a) (- (float-time) switchboard--agent-linger 1))
+      (switchboard--prune-helpers)
+      (should-not (memq a switchboard--sessions))
+      (should-not (buffer-live-p (switchboard-session-buffer a)))
+      ;; Its parent can still read what it said.
+      (let ((out (switchboard-test--sb s "read" "a")))
+        (should (= (car out) 0))
+        (should (string-match-p "the answer" (cdr out))))
+      (should (= (car (switchboard-test--sb s "wait" "a")) 0)))))
+
+(ert-deftest switchboard-test-kept-helper-isnt-cleaned-up ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--keep" "--name" "a" "look")
+    (let ((a (switchboard-test--helper "a")))
+      (switchboard-test--event a "Stop")
+      (setf (switchboard-session-told a) (- (float-time) switchboard--agent-linger 1))
+      (switchboard--prune-helpers)
+      (should (memq a switchboard--sessions))
+      (switchboard-test--sb s "release" "a")
+      (switchboard--prune-helpers)
+      (should-not (memq a switchboard--sessions)))))
+
+(ert-deftest switchboard-test-helper-on-screen-isnt-cleaned-up ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (let* ((a (switchboard-test--helper "a"))
+           (switchboard-test--on-screen a))
+      (switchboard-test--event a "Stop")
+      (setf (switchboard-session-told a) (- (float-time) switchboard--agent-linger 1))
+      (switchboard--prune-helpers)
+      (should (memq a switchboard--sessions)))))
+
+(ert-deftest switchboard-test-followup-restarts-a-helpers-clock ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (let ((a (switchboard-test--helper "a")))
+      (switchboard-test--event a "Stop")
+      (setf (switchboard-session-told a) (- (float-time) 30))
+      (switchboard-test--event a "UserPromptSubmit" '((prompt . "more")))
+      (should-not (switchboard-session-told a))
+      (switchboard-test--quiet s)
+      (setf (switchboard-session-status s) 'ready)
+      (switchboard-test--event a "Stop")
+      ;; One report for the task, and another for the follow-up.
+      (should (= (length switchboard-test--sent) 2)))))
+
+(ert-deftest switchboard-test-stopped-helper-stays-yours ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (let ((a (switchboard-test--helper "a")))
+      (switchboard--set a 'stopped)
+      (should-not (switchboard--helper-finished-p a))
+      (should-not (switchboard-session-pending a)))))
+
+(ert-deftest switchboard-test-helpers-go-when-their-parent-does ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (switchboard-test--sb (switchboard-test--helper "a") "run" "--name" "b" "look")
+    (switchboard--stop-helpers s)
+    (should-not (switchboard-test--helper "a"))
+    (should-not (switchboard-test--helper "b"))))
+
+(ert-deftest switchboard-test-helpers-arent-saved ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (let ((switchboard-save-file (make-temp-file "sb-test-save")))
+      (unwind-protect
+          (progn
+            (switchboard--save)
+            (with-temp-buffer
+              (insert-file-contents switchboard-save-file)
+              (let ((saved (read (current-buffer))))
+                (should (= (length saved) 1))
+                (should (equal (plist-get (car saved) :id) "heron-0001")))))
+        (delete-file switchboard-save-file)))))
+
+(ert-deftest switchboard-test-bar-counts-helpers-and-subagents ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (switchboard-test--event s "SubagentStart" '((agent_id . "x") (agent_type . "Explore")))
+    (should (equal (mapcar #'switchboard-agent-status (switchboard--bar-agents s))
+                   '(running running)))
+    (should (= (length (switchboard--descendants s)) 1))))
+
+(ert-deftest switchboard-test-draws-helper-rows ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "reviewer" "check the retry logic")
+    (let ((h (switchboard-test--helper "reviewer")))
+      (should (switchboard--helper-row h 0 nil 400 nil (switchboard--palette)))
+      (setf (switchboard-session-worktree h) t (switchboard-session-branch h) "sb/x"
+            (switchboard-session-held h) t)
+      (should (switchboard--helper-row h 1 t 400 t (switchboard--palette)))
+      (should (switchboard--row s 1 400 nil (switchboard--palette))))))
+
+(ert-deftest switchboard-test-claudes-own-agents-dont-wake-a-parent-waiting-on-a-helper ()
+  ;; Seen for real: Claude Code ends an agent of its own just after a turn.
+  (switchboard-test--with-helpers s
+    (switchboard-test--event s "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (switchboard-test--event s "Stop")
+    (should (eq (switchboard-session-status s) 'agents))
+    (switchboard-test--event s "SubagentStop" '((agent_id . "claudes-own")))
+    (should (eq (switchboard-session-status s) 'agents))
+    (switchboard-test--quiet s)
+    (switchboard-test--event (switchboard-test--helper "a") "Stop")
+    (should switchboard-test--sent)))
+
+(ert-deftest switchboard-test-helper-stuck-at-a-prompt-needs-you ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (let ((a (switchboard-test--helper "a"))
+          (screen "Do you trust this folder?"))
+      (cl-letf (((symbol-function 'switchboard--helper-screen) (lambda (&rest _) screen)))
+        ;; The first look has nothing to compare with.
+        (switchboard--watch-startup a)
+        (should (eq (switchboard-session-status a) 'working))
+        (switchboard--watch-startup a screen 1)
+        (should (eq (switchboard-session-status a) 'waiting))
+        (should (eq (switchboard--shown-status s) 'waiting))
+        (should (= (car (switchboard-test--sb s "send" "a" "yes")) 1))
+        ;; You answer: its terminal moves on.
+        (let ((before screen))
+          (setq screen "Starting up")
+          (switchboard--watch-startup a before 2))
+        (should (eq (switchboard-session-status a) 'working))
+        (should-not (switchboard-session-detail a))))))
+
+(ert-deftest switchboard-test-helper-event-ends-a-startup-stall ()
+  (switchboard-test--with-helpers s
+    (switchboard-test--sb s "run" "--name" "a" "look")
+    (let ((a (switchboard-test--helper "a")))
+      (cl-letf (((symbol-function 'switchboard--helper-screen) (lambda (&rest _) "same")))
+        (switchboard--watch-startup a "same" 1))
+      (should (eq (switchboard-session-status a) 'waiting))
+      (switchboard-test--event a "SessionStart" '((session_id . "x")))
+      (should (eq (switchboard-session-status a) 'working))
+      ;; Having reported, it's no longer watched.
+      (cl-letf (((symbol-function 'switchboard--helper-screen) (lambda (&rest _) "same")))
+        (switchboard--watch-startup a "same" 2))
+      (should (eq (switchboard-session-status a) 'working)))))
+
+(ert-deftest switchboard-test-sb-spool-answers-requests ()
+  (switchboard-test--with-helpers s
+    (let* ((user-emacs-directory (file-name-as-directory (make-temp-file "sb-test-home" t)))
+           (spool (switchboard--sb-spool))
+           (base (expand-file-name "heron-0001--abc123" spool)))
+      (with-temp-file (concat base ".req") (insert "\"ls\"\n"))
+      (switchboard--sb-poll)
+      (should-not (file-exists-p (concat base ".req")))
+      (should-not (file-exists-p (concat base ".working")))
+      (with-temp-buffer
+        (insert-file-contents (concat base ".reply"))
+        (should (string-match-p "\\`0\nYou have no helpers" (buffer-string))))
+      (delete-directory user-emacs-directory t))))
+
+(ert-deftest switchboard-test-the-real-sb-sends-one-request ()
+  ;; Seen for real: a run that started its helper, then failed saying it
+  ;; already existed, because the script had asked twice.
+  (switchboard-test--with-helpers s
+    (let* ((user-emacs-directory (file-name-as-directory (make-temp-file "sb-test-home" t)))
+           (output (generate-new-buffer " *sb-test-output*"))
+           (process-environment
+            (append (list (concat "SWITCHBOARD_ID=" (switchboard-session-id s))
+                          (concat "SWITCHBOARD_SB_DIR=" (switchboard--sb-spool)))
+                    process-environment))
+           (proc (make-process :name "sb-test" :buffer output :connection-type 'pipe
+                               :command (list "/bin/sh"
+                                              (expand-file-name "sb" switchboard--sb-directory)
+                                              "run" "--name" "once" "say \"hi\""))))
+      (unwind-protect
+          (progn
+            (while (process-live-p proc)
+              (switchboard--sb-poll)
+              (accept-process-output proc 0.05))
+            (should (= (process-exit-status proc) 0))
+            (should (string-match-p "Started once"
+                                    (with-current-buffer output (buffer-string))))
+            (should (equal (switchboard-session-task (switchboard-test--helper "once"))
+                           "say \"hi\"")))
+        (kill-buffer output)
+        (delete-directory user-emacs-directory t)))))
+
+;; These use real git: deleting someone's work by mistake is the worst this
+;; can do.
+
+(defmacro switchboard-test--with-worktree-helper (var parent &rest body)
+  "Run BODY with PARENT a session in a repo, and VAR its helper on a worktree."
+  (declare (indent 2))
+  `(switchboard-test--with-helpers ,parent
+     (let* ((default-directory (switchboard-session-dir ,parent))
+            (switchboard-worktree-directory (make-temp-file "sb-test-worktrees" t)))
+       (call-process "git" nil nil nil "init" "-q" "-b" "main")
+       (call-process "git" nil nil nil "-c" "user.name=t" "-c" "user.email=t@t"
+                     "commit" "-q" "--allow-empty" "-m" "init")
+       (should (= (car (switchboard-test--sb ,parent "run" "--worktree" "--name" "w" "edit")) 0))
+       (let ((,var (switchboard-test--helper "w")))
+         (unwind-protect (progn ,@body)
+           (delete-directory switchboard-worktree-directory t))))))
+
+(defun switchboard-test--commit-in (dir)
+  (let ((default-directory dir))
+    (with-temp-file "new.txt" (insert "work"))
+    (call-process "git" nil nil nil "add" ".")
+    (call-process "git" nil nil nil "-c" "user.name=t" "-c" "user.email=t@t"
+                  "commit" "-q" "-m" "work")))
+
+(defun switchboard-test--expire (h)
+  (setf (switchboard-session-status h) 'ready
+        (switchboard-session-told h) (- (float-time) switchboard--agent-linger 1))
+  (switchboard--prune-helpers))
+
+(ert-deftest switchboard-test-helper-worktree-with-nothing-to-lose-is-removed ()
+  (switchboard-test--with-worktree-helper h s
+    (let ((dir (switchboard-session-dir h)))
+      (should (file-directory-p dir))
+      (should (string-prefix-p "sb/w-" (switchboard-session-branch h)))
+      (switchboard-test--expire h)
+      (should-not (memq h switchboard--sessions))
+      (should-not (file-directory-p dir)))))
+
+(ert-deftest switchboard-test-helper-unmerged-commits-are-kept ()
+  (switchboard-test--with-worktree-helper h s
+    (let ((dir (switchboard-session-dir h))
+          (branch (switchboard-session-branch h)))
+      (switchboard-test--commit-in dir)
+      (switchboard-test--expire h)
+      ;; Still listed, and its work is still there.
+      (should (memq h switchboard--sessions))
+      (should (switchboard-session-held h))
+      (should (file-exists-p (expand-file-name "new.txt" dir)))
+      ;; Merged into its parent: now it can go.
+      (let ((default-directory (switchboard-session-dir s)))
+        (call-process "git" nil nil nil "-c" "user.name=t" "-c" "user.email=t@t"
+                      "merge" "-q" branch))
+      (switchboard-test--expire h)
+      (should-not (memq h switchboard--sessions))
+      (should-not (file-directory-p dir)))))
+
+(ert-deftest switchboard-test-helper-merged-into-a-worktree-parent-can-go ()
+  (switchboard-test--with-worktree-helper h s
+    (let* ((dir (switchboard-session-dir h))
+           (branch (switchboard-session-branch h))
+           (parent-dir (make-temp-file "sb-test-parent-tree" t)))
+      (delete-directory parent-dir t)
+      (let ((default-directory (switchboard-session-dir s)))
+        (call-process "git" nil nil nil "worktree" "add" "-q" "-b" "parent-work" parent-dir))
+      (setf (switchboard-session-dir s) (file-name-as-directory parent-dir))
+      (switchboard-test--commit-in dir)
+      (let ((default-directory parent-dir))
+        (call-process "git" nil nil nil "-c" "user.name=t" "-c" "user.email=t@t"
+                      "merge" "-q" branch))
+      ;; Not in main, but in the parent's branch, where it was meant to go.
+      (switchboard-test--expire h)
+      (should-not (memq h switchboard--sessions))
+      (delete-directory parent-dir t))))
+
+(ert-deftest switchboard-test-helper-uncommitted-changes-are-kept ()
+  (switchboard-test--with-worktree-helper h s
+    (let ((dir (switchboard-session-dir h)))
+      (with-temp-file (expand-file-name "draft.txt" dir) (insert "draft"))
+      (switchboard-test--expire h)
+      (should (memq h switchboard--sessions))
+      (should (file-exists-p (expand-file-name "draft.txt" dir))))))
+
+(ert-deftest switchboard-test-sb-stop-keeps-unmerged-work ()
+  (switchboard-test--with-worktree-helper h s
+    (let ((dir (switchboard-session-dir h)))
+      (switchboard-test--commit-in dir)
+      (let ((out (switchboard-test--sb s "stop" "w")))
+        (should (= (car out) 0))
+        (should (string-match-p "Kept its worktree" (cdr out))))
+      (should-not (memq h switchboard--sessions))
+      (should (file-directory-p dir)))))
+
+(ert-deftest switchboard-test-sb-worktree-warns-about-uncommitted-work ()
+  (switchboard-test--with-helpers s
+    (let* ((default-directory (switchboard-session-dir s))
+           (switchboard-worktree-directory (make-temp-file "sb-test-worktrees" t)))
+      (call-process "git" nil nil nil "init" "-q" "-b" "main")
+      (call-process "git" nil nil nil "-c" "user.name=t" "-c" "user.email=t@t"
+                    "commit" "-q" "--allow-empty" "-m" "init")
+      (with-temp-file "uncommitted.txt" (insert "x"))
+      (let ((out (switchboard-test--sb s "run" "--worktree" "--name" "w" "edit")))
+        (should (string-match-p "uncommitted changes" (cdr out))))
+      (should-not (file-exists-p
+                   (expand-file-name "uncommitted.txt"
+                                     (switchboard-session-dir (switchboard-test--helper "w")))))
+      (delete-directory switchboard-worktree-directory t))))
 
 (provide 'switchboard-test)
 ;;; switchboard-test.el ends here

@@ -1,4 +1,4 @@
-;;; switchboard.el --- A vertical list of Claude Code and Codex sessions -*- lexical-binding: t; -*-
+;;; switchboard.el --- A vertical list of Claude Code, Codex and Pi sessions -*- lexical-binding: t; -*-
 
 ;;; Commentary:
 
@@ -36,6 +36,9 @@
 ;; pi-subagents, are listed under it, with the tool each is running, for the session on screen and any with an agent that
 ;; needs you; other rows show them as a bar, one segment per agent.
 ;;
+;; Agents can start each other through bin/sb.  Those helpers are sessions
+;; listed under the one that started them; see "Helpers" below.
+;;
 ;; Entry point: M-x switchboard.
 
 ;;; Code:
@@ -48,6 +51,7 @@
 (require 'transient)
 
 (declare-function ghostel-exec "ghostel")
+(declare-function ghostel--copy-all-text "ghostel-module")
 (declare-function ghostel-paste-string "ghostel")
 (declare-function ghostel-send-key "ghostel")
 (declare-function ghostel--adjust-size "ghostel")
@@ -185,6 +189,8 @@ nil notifies once."
   id name title named harness root dir branch buffer
   (status 'ready) unread marked task detail tokens resume-id transcript changes pr
   cwd worktree agents
+  ;; A helper: who started it, and where it is in reporting back.
+  parent keep report pending told held last-input heard stalled
   (changed (float-time)) (turn-start (float-time)))
 
 ;; A session's subagents.  They're replaced, never changed in place: the
@@ -278,7 +284,8 @@ resuming and worktree cleanup stay with `switchboard-session-dir'."
       (message "Switchboard: %s %s" (switchboard--title s)
                (if (eq status 'waiting) "needs you" "hit an error")))
     (switchboard--notify s status)
-    (switchboard--schedule-reminder s))
+    (switchboard--schedule-reminder s)
+    (switchboard--helpers-status-changed s))
   (switchboard--schedule-render))
 
 (defvar switchboard--reminders (make-hash-table :test 'equal)
@@ -312,7 +319,9 @@ resuming and worktree cleanup stay with `switchboard-session-dir'."
 AGAIN says it has been in STATUS a while: a reminder.
 With terminal-notifier, clicking it brings Emacs back on S; osascript
 can only post it."
-  (when (memq status switchboard-notify)
+  ;; A helper finishing is its parent's news, not yours.
+  (when (and (memq status switchboard-notify)
+             (not (and (switchboard--helper-p s) (memq status '(ready exited)))))
     (unless (and (switchboard--watching-p s) (eq (frame-focus-state) t))
       (let ((title (switchboard--title s))
             (subtitle (pcase status
@@ -461,7 +470,9 @@ A new branch starts from START, or ROOT's checked-out commit."
                       :StopFailure (funcall hook "StopFailure"))))
     (make-directory (file-name-directory file) t)
     (with-temp-file file
-      (insert (json-serialize (list :hooks hooks))))
+      ;; sb has its own limits, and asking about each call would defeat it.
+      (insert (json-serialize (list :hooks hooks
+                                    :permissions '(:allow ["Bash(sb:*)" "Bash(sb)"])))))
     file))
 
 (defconst switchboard--codex-events
@@ -518,7 +529,8 @@ SWITCHBOARD_ID it took with it from S's terminal."
      (if-let* ((bg (and resume (switchboard--claude-background-id s))))
          (list "claude" "attach" bg)
        ;; No -n: Claude then titles the session itself (see `switchboard--ai-title').
-       (append (list "claude" "--settings" (switchboard--claude-settings))
+       (append (list "claude" "--settings" (switchboard--claude-settings)
+                     "--append-system-prompt" (switchboard--sb-instructions s))
                (cond ((and resume (switchboard-session-resume-id s))
                       (list "--resume" (switchboard-session-resume-id s)))
                      (resume (list "--continue")))
@@ -532,11 +544,15 @@ SWITCHBOARD_ID it took with it from S's terminal."
                    (resume (list "resume" "--last")))
              (list "--no-daemon")
              (switchboard--codex-config-args)
+             (list "-c" (format "developer_instructions=%S" (switchboard--sb-instructions s))
+                   ;; Its sandbox can't reach Emacs's socket; sb writes here instead.
+                   "--add-dir" (switchboard--sb-spool))
              (and prompt (list prompt))))
     ('pi
      ;; Pi reports its session's id on SessionStart.  `--' keeps a prompt
      ;; that starts with - a prompt.
-     (append (list "pi" "-e" switchboard--pi-extension)
+     (append (list "pi" "-e" switchboard--pi-extension
+                   "--append-system-prompt" (switchboard--sb-instructions s))
              (cond ((and resume (switchboard-session-resume-id s))
                     (list "--session-id" (switchboard-session-resume-id s)))
                    (resume (list "--continue")))
@@ -681,7 +697,9 @@ With evil the keys apply in insert state only. Setting this with
                       (user-error "%s is not on exec-path" (car argv))))
          (default-directory (switchboard-session-dir s))
          (process-environment
-          (append (list (concat "SWITCHBOARD_ID=" (switchboard-session-id s))
+          (append (list (concat "PATH=" switchboard--sb-directory path-separator (getenv "PATH"))
+                        (concat "SWITCHBOARD_ID=" (switchboard-session-id s))
+                        (concat "SWITCHBOARD_SB_DIR=" (switchboard--sb-spool))
                         (concat "SWITCHBOARD_SOCKET="
                                 (expand-file-name server-name server-socket-dir))
                         (concat "SWITCHBOARD_EMACSCLIENT="
@@ -691,8 +709,10 @@ With evil the keys apply in insert state only. Setting this with
     (with-current-buffer buf
       (setq default-directory (switchboard-session-dir s)))
     (setf (switchboard-session-buffer s) buf)
-    ;; Show it first so ghostel sizes the terminal to the real window.
-    (switchboard--show s t)
+    ;; Show it first so ghostel sizes the terminal to the real window.  A
+    ;; helper stays out of your way; it's sized when you first open it.
+    (unless (switchboard--helper-p s)
+      (switchboard--show s t))
     (ghostel-exec buf program (cdr argv))
     (with-current-buffer buf
       (setq-local switchboard--session s
@@ -705,6 +725,7 @@ With evil the keys apply in insert state only. Setting this with
       (switchboard-agent-mode)
       (switchboard-terminal-mode))
     (switchboard--schedule-render)
+    (switchboard--sb-listen)
     (when prompt
       (setf (switchboard-session-task s) prompt)
       (switchboard--set s 'working))
@@ -1234,7 +1255,8 @@ Return non-nil if any were."
     pruned))
 
 (defun switchboard--finish-turn (s status)
-  (setf (switchboard-session-unread s) (not (switchboard--watching-p s)))
+  (setf (switchboard-session-unread s) (and (not (switchboard--helper-p s))
+                                            (not (switchboard--watching-p s))))
   (switchboard--set s status))
 
 (defvar switchboard--codex-hooked (make-hash-table :test 'equal)
@@ -1316,6 +1338,7 @@ Called by switchboard-hook.sh through emacsclient."
     ;; A paused session's process may still report the turn it was cut off in.
     (when (and s (not (eq (switchboard-session-status s) 'paused)))
       (switchboard--note-cwd s (alist-get 'cwd payload))
+      (switchboard--heard-from s)
       (when (and (eq (switchboard-session-harness s) 'codex) (not (equal event "notify")))
         (puthash (switchboard-session-id s) t switchboard--codex-hooked)
         ;; Hooks you trust mid-session never sent that session's SessionStart.
@@ -1401,7 +1424,10 @@ Called by switchboard-hook.sh through emacsclient."
          ;; its results in a turn of its own.  Codex's waits for your next
          ;; prompt instead.
          (cond ((not (and (eq (switchboard-session-status s) 'agents)
-                          (zerop (switchboard--live-agents s))))
+                          (zerop (switchboard--live-agents s))
+                          ;; Claude Code ends agents of its own after a turn.
+                          ;; If S is waiting on a helper, nothing changed.
+                          (zerop (switchboard--live-helpers s))))
                 (switchboard--schedule-render))
                ((eq (switchboard-session-harness s) 'codex)
                 (switchboard--finish-turn s 'ready))
@@ -1416,7 +1442,7 @@ Called by switchboard-hook.sh through emacsclient."
            (if blocked
                (dolist (a blocked) (switchboard--change-agent s a :resume 'agents))
              (setf (switchboard-session-detail s) nil)
-             (if (> live 0)
+             (if (> (+ live (switchboard--live-helpers s)) 0)
                  (switchboard--set s 'agents)
                (switchboard--finish-turn s 'ready)))))
         ("StopFailure"
@@ -1465,6 +1491,7 @@ and no SubagentStop follows."
 
 (defun switchboard--note-input (key)
   (when-let* ((s switchboard--session))
+    (setf (switchboard-session-last-input s) (float-time))
     (let ((status (switchboard-session-status s)))
       (cond ((and (eq key 'escape) (memq status '(working waiting)))
              (switchboard--stop-turn s))
@@ -1483,6 +1510,7 @@ and no SubagentStop follows."
       (unless (string-prefix-p "finished" event)
         (setf (switchboard-session-detail s) (string-trim event)))
       (switchboard--clear-agents s)
+      (switchboard--stop-helpers s)
       (switchboard--set s 'exited)))
   ;; A drawer whose shell exited closes its split.
   (when (buffer-local-value 'switchboard--drawer-of buf)
@@ -1534,7 +1562,9 @@ and no SubagentStop follows."
   (make-directory (file-name-directory switchboard-save-file) t)
   (with-temp-file switchboard-save-file
     (let ((print-length nil) (print-level nil))
-      (prin1 (mapcar #'switchboard--plist switchboard--sessions) (current-buffer)))))
+      (prin1 (mapcar #'switchboard--plist
+                     (cl-remove-if #'switchboard--helper-p switchboard--sessions))
+             (current-buffer)))))
 
 (defun switchboard--plist (s)
   "S's `switchboard--saved-slots' as a plist, which makes it again."
@@ -1603,6 +1633,520 @@ folder's latest."
       (message "Resumed %d session%s" (length exited) (if (cdr exited) "s" "")))))
 
 
+;;; Helpers
+;;
+;; Agents started by other agents through bin/sb.  Each is an ordinary
+;; session, so hooks, notifications and its terminal work as usual, with
+;; `parent' set to the id of the one that started it.  The list draws it under
+;; that session instead of in a group.  They aren't saved: their processes end
+;; with Emacs, and a worktree left behind is for `switchboard-prune-worktrees'.
+
+(defconst switchboard--helper-max-depth 2
+  "How many levels of helpers a top-level session can have under it.")
+
+(defconst switchboard--helper-max 10
+  "How many helpers a whole tree can have running at once.")
+
+(defconst switchboard--helper-report-max 2000
+  "Longest report typed into a parent's terminal; `sb read' has the rest.")
+
+(defconst switchboard--helper-input-grace 5
+  "Seconds a parent's terminal must have had no keys before a report is typed.
+Pasting into it submits whatever you were in the middle of typing.")
+
+(defconst switchboard--sb-directory
+  (expand-file-name "bin" (file-name-directory switchboard--hook-script))
+  "The folder holding `sb', put on each session's PATH.")
+
+(defvar switchboard--helper-results (make-hash-table :test 'equal)
+  "\"PARENT-ID/NAME\" to (STATUS REPORT SCREEN) for helpers since removed.")
+
+(defun switchboard--helper-p (s) (and (switchboard-session-parent s) t))
+
+(defun switchboard--parent (s)
+  (and (switchboard-session-parent s) (switchboard--find (switchboard-session-parent s))))
+
+(defun switchboard--helpers (s)
+  "The helpers S started itself."
+  (let ((id (switchboard-session-id s)))
+    (cl-remove-if-not (lambda (h) (equal (switchboard-session-parent h) id))
+                      switchboard--sessions)))
+
+(defun switchboard--descendants (s)
+  "S's helpers, each followed by its own."
+  (mapcan (lambda (h) (cons h (switchboard--descendants h))) (switchboard--helpers s)))
+
+(defun switchboard--tree-root (s)
+  (let ((parent (switchboard--parent s)))
+    (if parent (switchboard--tree-root parent) s)))
+
+(defun switchboard--helper-depth (s)
+  "0 for a top-level session, 1 for its helpers, and so on."
+  (let ((parent (switchboard--parent s)))
+    (if parent (1+ (switchboard--helper-depth parent)) 0)))
+
+(defun switchboard--helper-finished-p (h)
+  "Non-nil if H is done with its task.  STOPPED isn't: you stopped it, to
+take it somewhere else, and it shouldn't be cleaned up under you."
+  (memq (switchboard-session-status h) '(ready error exited)))
+
+(defun switchboard--live-helpers (s)
+  (cl-count-if-not #'switchboard--helper-finished-p (switchboard--descendants s)))
+
+(defun switchboard--helper-needing-you (s)
+  "The first of S's helpers waiting on a prompt to you."
+  (cl-find 'waiting (switchboard--descendants s) :key #'switchboard-session-status))
+
+(defun switchboard--helpers-key (s)
+  "What S's row shows of its helpers, for a cache key: they're sessions of
+their own, so a copy of S doesn't change when they do."
+  (mapcar (lambda (h) (list (switchboard-session-status h) (switchboard-session-detail h)))
+          (switchboard--descendants s)))
+
+(defun switchboard--bar-agents (s)
+  "S's helpers and subagents as subagents, in the order the bar draws them."
+  (cl-stable-sort
+   (append (mapcar (lambda (h)
+                     (switchboard--agent-create
+                      :id (switchboard-session-id h)
+                      :status (cond ((eq (switchboard-session-status h) 'waiting) 'waiting)
+                                    ((switchboard--helper-finished-p h) 'done)
+                                    (t 'running))))
+                   (switchboard--descendants s))
+           (copy-sequence (switchboard-session-agents s)))
+   #'< :key (lambda (a) (pcase (switchboard-agent-status a)
+                          ('waiting 0) ('running 1) (_ 2)))))
+
+(defun switchboard--listed-helpers (sessions)
+  "The helpers with a line of their own under SESSIONS."
+  (mapcan (lambda (s) (and (switchboard--agents-expanded-p s) (switchboard--descendants s)))
+          (copy-sequence sessions)))
+
+;;;; Telling the parent
+
+(defun switchboard--helper-report-text (h)
+  "What H's parent gets told now that H is done."
+  (let* ((name (switchboard--title h))
+         (report (switchboard-session-report h))
+         (long (and report (> (length report) switchboard--helper-report-max)))
+         (status (pcase (switchboard-session-status h)
+                   ('error "error") ('exited "exited") (_ "finished")))
+         (branch (and (switchboard-session-worktree h) (switchboard-session-branch h))))
+    (format "<sb from=%S status=%S%s>%s</sb>"
+            name status
+            (if branch (format " branch=%S" branch) "")
+            (cond (long (concat (substring report 0 switchboard--helper-report-max)
+                                (format "\n[cut short; the rest is in: sb read %s]" name)))
+                  (report)
+                  ((and (eq (switchboard-session-status h) 'error)
+                        (switchboard-session-detail h)))
+                  (t (format "No report; see: sb read %s" name))))))
+
+(defun switchboard--helper-told (h)
+  "H's parent has its result: start the clock on cleaning it up."
+  (setf (switchboard-session-pending h) nil
+        (switchboard-session-told h) (float-time))
+  (run-at-time (1+ switchboard--agent-linger) nil #'switchboard--prune-helpers))
+
+(defun switchboard--deliver-reports (s)
+  "Type the results of S's finished helpers into S, if it's free to take them."
+  (when (and (memq (switchboard-session-status s) '(ready agents))
+             (buffer-live-p (switchboard-session-buffer s)))
+    (let ((pending (cl-remove-if-not #'switchboard-session-pending (switchboard--helpers s)))
+          (quiet (- (float-time) (or (switchboard-session-last-input s) 0))))
+      (cond
+       ((null pending)
+        ;; Its last helper's result was read with `sb wait': nothing will wake it.
+        (when (and (eq (switchboard-session-status s) 'agents)
+                   (zerop (switchboard--live-agents s))
+                   (zerop (switchboard--live-helpers s)))
+          (switchboard--finish-turn s 'ready)))
+       ((< quiet switchboard--helper-input-grace)
+        (run-at-time (- switchboard--helper-input-grace quiet -0.1) nil
+                     #'switchboard--deliver-reports s))
+       (t
+        (switchboard--send s (mapconcat #'switchboard--helper-report-text pending "\n"))
+        (mapc #'switchboard--helper-told pending))))))
+
+(defun switchboard--helpers-status-changed (s)
+  "S moved to a new status: settle what that means for helpers and parents."
+  (when (switchboard--helper-p s)
+    (if (switchboard--helper-finished-p s)
+        (unless (switchboard-session-told s)
+          (setf (switchboard-session-pending s) t))
+      ;; Back at work, so whatever it reported is out of date.
+      (setf (switchboard-session-pending s) nil
+            (switchboard-session-told s) nil
+            (switchboard-session-held s) nil))
+    (when-let* ((parent (switchboard--parent s)))
+      (switchboard--deliver-reports parent)))
+  (switchboard--deliver-reports s))
+
+;;;; Cleaning up
+
+(defun switchboard--helper-worktree (h)
+  "H's own worktree, if it has one nobody else uses: (DIR . INFO).
+INFO is what `switchboard--worktree-info' says, with MERGED also true if
+the branch is merged into its parent's."
+  (let* ((dir (file-name-as-directory (expand-file-name (switchboard-session-dir h))))
+         (own (and (string-prefix-p (expand-file-name switchboard-worktree-directory) dir)
+                   (not (cl-find dir (remq h switchboard--sessions)
+                                 :key (lambda (o) (file-name-as-directory
+                                                   (expand-file-name (switchboard-session-dir o))))
+                                 :test #'equal))))
+         (info (and own (file-directory-p dir) (switchboard--worktree-info dir)))
+         (parent (switchboard--parent h)))
+    (when info
+      (when (and parent (not (nth 2 info)) (nth 1 info)
+                 (switchboard--git (switchboard--work-dir parent)
+                                   "merge-base" "--is-ancestor" (nth 1 info) "HEAD"))
+        (setq info (list (nth 0 info) (nth 1 info) t (nth 3 info))))
+      (cons dir info))))
+
+(defun switchboard--helper-holds-work-p (h)
+  (when-let* ((worktree (switchboard--helper-worktree h)))
+    (pcase-let ((`(,_root ,_branch ,merged ,dirty) (cdr worktree)))
+      (or dirty (not merged)))))
+
+(defun switchboard--helper-screen (h &optional lines)
+  "The last LINES lines of H's terminal, without the blank ones after them."
+  (when (buffer-live-p (switchboard-session-buffer h))
+    (with-current-buffer (switchboard-session-buffer h)
+      ;; From the terminal itself: ghostel only draws a buffer that's on screen.
+      (when-let* (((bound-and-true-p ghostel--term))
+                  (text (ghostel--copy-all-text ghostel--term)))
+        (string-join (last (split-string (string-trim-right text) "\n") (or lines 50))
+                     "\n")))))
+
+(defun switchboard--end-process (s)
+  "Let S's agent save its conversation and exit, as `switchboard-pause' does."
+  (when-let* ((proc (and (buffer-live-p (switchboard-session-buffer s))
+                         (get-buffer-process (switchboard-session-buffer s))))
+              ((process-live-p proc)))
+    (signal-process (or (process-get proc 'ghostel--native-pid) proc) 'SIGTERM)))
+
+(defun switchboard--discard-helper (h)
+  "Stop H and its helpers and take them off the list.
+Return what became of its worktree, as a sentence, or nil if it had none."
+  (mapc #'switchboard--discard-helper (switchboard--helpers h))
+  (when-let* ((parent (switchboard-session-parent h)))
+    (puthash (format "%s/%s" parent (switchboard--title h))
+             (list (switchboard-session-status h) (switchboard-session-report h)
+                   (switchboard--helper-screen h 200))
+             switchboard--helper-results))
+  (let ((worktree (switchboard--helper-worktree h)))
+    (dolist (buf (list (switchboard-session-buffer h)
+                       (get-buffer (switchboard--drawer-name h "shell"))))
+      (when (buffer-live-p buf)
+        (let ((kill-buffer-query-functions nil)
+              (ghostel-query-before-killing nil))
+          (kill-buffer buf))))
+    (switchboard--clear-notification h)
+    (setq switchboard--sessions (delq h switchboard--sessions))
+    (switchboard--schedule-render)
+    (when worktree
+      (pcase-let ((`(,dir ,root ,branch ,merged ,dirty) worktree))
+        (if (and merged (not dirty))
+            (if (switchboard--remove-worktree dir root branch t)
+                (format "Removed its worktree and branch %s." branch)
+              (format "Couldn't remove its worktree, %s." (abbreviate-file-name dir)))
+          (format "Kept its worktree, %s, and branch %s: it has %s."
+                  (abbreviate-file-name dir) branch
+                  (if dirty "uncommitted changes" "unmerged commits")))))))
+
+(defun switchboard--stop-helpers (s)
+  "S is going away, and its helpers go with it."
+  (mapc #'switchboard--discard-helper (switchboard--helpers s)))
+
+(defun switchboard--prune-helpers ()
+  "Clean up helpers whose parent got their result a while ago.
+One you're looking at stays until you leave it.  One holding work that
+isn't merged yet stays listed, without its process, until it is."
+  (let ((cutoff (- (float-time) switchboard--agent-linger)))
+    (dolist (h (copy-sequence switchboard--sessions))
+      (when (and (switchboard--helper-p h)
+                 (switchboard-session-told h)
+                 (< (switchboard-session-told h) cutoff)
+                 (not (switchboard-session-keep h))
+                 (switchboard--helper-finished-p h)
+                 (null (switchboard--helpers h)))
+        (cond ((switchboard--on-screen-p h)
+               (run-at-time 10 nil #'switchboard--prune-helpers))
+              ((switchboard--helper-holds-work-p h)
+               (setf (switchboard-session-held h) t
+                     (switchboard-session-told h) (float-time))
+               (switchboard--end-process h)
+               (run-at-time (1+ switchboard--agent-linger) nil #'switchboard--prune-helpers)
+               (switchboard--schedule-render))
+              (t (switchboard--discard-helper h)))))))
+
+;;;; A helper stuck at startup
+
+;; An agent can stop at a prompt before it sends a single event: Claude Code
+;; and Codex ask whether to trust a folder they haven't seen, and Codex to
+;; review changed hooks.  You'd see that in a terminal on screen, but a helper's
+;; isn't, and its row would say WORKING for good.  These are yours to answer.
+
+(defconst switchboard--startup-check 8
+  "Seconds between looks at a helper that hasn't reported anything yet.")
+
+(defconst switchboard--startup-checks 60
+  "How many looks to take before leaving it alone.")
+
+(defun switchboard--heard-from (s)
+  "An event came from S, so it's past startup."
+  (setf (switchboard-session-heard s) t)
+  (when (switchboard-session-stalled s)
+    (setf (switchboard-session-stalled s) nil
+          (switchboard-session-detail s) nil)
+    (switchboard--set s 'working)))
+
+(defun switchboard--watch-startup (h &optional screen checks)
+  "If H's terminal hasn't changed since SCREEN and H hasn't reported, it's
+waiting on you.  If it changes after that, you answered."
+  (when (and (memq h switchboard--sessions)
+             (not (switchboard-session-heard h))
+             (< (or checks 0) switchboard--startup-checks)
+             (memq (switchboard-session-status h) '(working waiting)))
+    (let ((now (switchboard--helper-screen h)))
+      (cond ((and (switchboard-session-stalled h) (not (equal now screen)))
+             (setf (switchboard-session-stalled h) nil
+                   (switchboard-session-detail h) nil)
+             (switchboard--set h 'working))
+            ((and (not (switchboard-session-stalled h))
+                  now (not (string-blank-p now)) (equal now screen))
+             (setf (switchboard-session-stalled h) t
+                   (switchboard-session-detail h) "Asking something in its terminal")
+             (switchboard--set h 'waiting)))
+      (run-at-time switchboard--startup-check nil #'switchboard--watch-startup
+                   h now (1+ (or checks 0))))))
+
+;;;; Starting one
+
+(defun switchboard--sb-instructions (s)
+  "What S's agent is told about `sb', in a line: `sb --skill' has the rest."
+  (concat
+   "You can run other coding agents as helpers with the sb command; run `sb --skill` to learn how."
+   (when (switchboard--helper-p s)
+     (format " You are a helper named %s, started by another agent. When you are done, give it your result with `sb report \"...\"`."
+             (switchboard--title s)))))
+
+(defun switchboard--helper-start (caller harness name task worktree keep)
+  "Start helper NAME of CALLER, running HARNESS on TASK.  Return the new session."
+  (let* ((root (switchboard-session-root caller))
+         (work (switchboard--work-dir caller))
+         (handle (format "%s-%04x" name (random #xffff)))
+         (place (if worktree
+                    (switchboard--add-worktree root handle
+                                               (switchboard--git work "rev-parse" "HEAD"))
+                  (cons work (switchboard--git work "branch" "--show-current"))))
+         (h (switchboard--session-create
+             :id handle :name handle :title name :named t
+             :harness harness :root root :dir (car place) :branch (cdr place)
+             :parent (switchboard-session-id caller) :keep keep)))
+    (setq switchboard--sessions (append switchboard--sessions (list h)))
+    ;; A task that starts with - would be read as an option.
+    (switchboard--spawn h (if (string-prefix-p "-" task) (concat "Task: " task) task))
+    (switchboard--update-git h)
+    (switchboard--watch-startup h)
+    h))
+
+;;;; The sb command
+
+(defun switchboard--sb-options (args flags)
+  "Split ARGS into (OPTIONS . REST).  FLAGS lists the ones that take no value;
+any other --option takes the next argument."
+  (let (options rest)
+    (while args
+      (let ((a (pop args)))
+        (cond ((member a flags) (push (cons a t) options))
+              ((string-prefix-p "--" a)
+               (unless args (user-error "%s needs a value" a))
+               (push (cons a (pop args)) options))
+              (t (push a rest)))))
+    (cons options (nreverse rest))))
+
+(defun switchboard--sb-helper (caller name)
+  "CALLER's own helper NAME."
+  (unless name (user-error "Which helper? See: sb ls"))
+  (or (cl-find name (switchboard--helpers caller) :key #'switchboard--title :test #'equal)
+      (user-error "You have no helper named %s; see: sb ls" name)))
+
+(defun switchboard--sb-describe (h)
+  (format "%s  %s  %s  %s  %s"
+          (switchboard--title h) (switchboard-session-harness h)
+          (switchboard--label h) (switchboard--age h)
+          (if (switchboard-session-worktree h)
+              (format "worktree on %s%s" (switchboard-session-branch h)
+                      (if (switchboard-session-held h) " (unmerged)" ""))
+            "shared folder")))
+
+(defun switchboard--sb-run (caller args)
+  (pcase-let* ((`(,options . ,rest) (switchboard--sb-options args '("--worktree" "--keep")))
+               (task (car rest))
+               (agent (or (alist-get "--agent" options nil nil #'equal)
+                          (symbol-name (switchboard-session-harness caller))))
+               (harness (or (car (member (intern agent) '(claude codex pi)))
+                            (user-error "Unknown agent %s; use claude, codex or pi" agent)))
+               (root (switchboard--tree-root caller))
+               (tree (switchboard--descendants root))
+               (name (or (alist-get "--name" options nil nil #'equal)
+                         (format "%s-%d" agent (1+ (length tree))))))
+    (unless (and task (not (string-blank-p task)) (null (cdr rest)))
+      (user-error "Give the task as one quoted argument"))
+    (unless (string-match-p "\\`[a-z0-9][a-z0-9-]*\\'" name)
+      (user-error "Names use lowercase letters, digits and hyphens: %s" name))
+    (when (>= (switchboard--helper-depth caller) switchboard--helper-max-depth)
+      (user-error "Helpers can only go %d levels deep; do this yourself"
+                  switchboard--helper-max-depth))
+    (when (>= (cl-count-if-not #'switchboard--helper-finished-p tree) switchboard--helper-max)
+      (user-error "This tree already has %d helpers running; wait for one to finish"
+                  switchboard--helper-max))
+    (when (cl-find name (cons root tree) :key #'switchboard--title :test #'equal)
+      (user-error "There is already a helper named %s" name))
+    (unless (executable-find (symbol-name harness))
+      (user-error "%s isn't installed" harness))
+    (let* ((worktree (alist-get "--worktree" options nil nil #'equal))
+           (dirty (and worktree
+                       (not (string-empty-p
+                             (or (switchboard--git (switchboard--work-dir caller)
+                                                   "status" "--porcelain")
+                                 "")))))
+           (h (switchboard--helper-start caller harness name task worktree
+                                         (alist-get "--keep" options nil nil #'equal))))
+      (concat (format "Started %s (%s) in %s" name harness
+                      (abbreviate-file-name (switchboard-session-dir h)))
+              (if worktree (format " on branch %s." (switchboard-session-branch h)) ".")
+              (if dirty
+                  "\nYour folder has uncommitted changes this helper can't see. Commit them and start it again if it needs them."
+                "")
+              "\nIts result will be typed into your session when it finishes."))))
+
+(defun switchboard--sb-wait (caller name)
+  "Return (CODE . TEXT): 3 while CALLER's helper NAME is still going."
+  (let ((h (cl-find name (switchboard--helpers caller)
+                    :key #'switchboard--title :test #'equal)))
+    (cond
+     ((and h (switchboard--helper-finished-p h))
+      (switchboard--helper-told h)
+      (cons 0 (switchboard--helper-report-text h)))
+     (h (cons 3 (format "%s is still running: %s" name (switchboard--label h))))
+     ((gethash (format "%s/%s" (switchboard-session-id caller) name)
+               switchboard--helper-results)
+      (cons 0 (format "%s has finished and was cleaned up; see: sb read %s" name name)))
+     (t (user-error "You have no helper named %s; see: sb ls" name)))))
+
+(defun switchboard--sb-read (caller args)
+  (pcase-let* ((`(,options . ,rest) (switchboard--sb-options args nil))
+               (name (car rest))
+               (lines (string-to-number (or (alist-get "--lines" options nil nil #'equal) "50")))
+               (h (cl-find name (switchboard--helpers caller)
+                           :key #'switchboard--title :test #'equal))
+               (gone (gethash (format "%s/%s" (switchboard-session-id caller) name)
+                              switchboard--helper-results)))
+    (cond
+     (h (concat (when-let* ((report (switchboard-session-report h)))
+                  (format "Its report:\n%s\n\nIts terminal:\n" report))
+                (or (switchboard--helper-screen h lines) "")))
+     (gone (pcase-let ((`(,_status ,report ,screen) gone))
+             (concat (and report (format "Its report:\n%s\n\nIts terminal when it ended:\n" report))
+                     (string-join (last (split-string (or screen "") "\n") lines) "\n"))))
+     (t (switchboard--sb-helper caller name)))))
+
+(defun switchboard--sb-send (caller name text)
+  (let ((h (switchboard--sb-helper caller name)))
+    (unless (and text (not (string-blank-p text)))
+      (user-error "Give the message as one quoted argument"))
+    (pcase (switchboard-session-status h)
+      ('waiting (user-error "%s is waiting on a permission prompt, which only the user can answer" name))
+      ((or 'exited 'paused) (user-error "%s isn't running" name)))
+    (switchboard--send h text)
+    (format "Sent to %s." name)))
+
+(defun switchboard--sb-dispatch (caller command args)
+  "Run `sb COMMAND ARGS' for session CALLER.  Return TEXT, or (CODE . TEXT)."
+  (pcase command
+    ("run" (switchboard--sb-run caller args))
+    ("ls" (if-let* ((helpers (switchboard--helpers caller)))
+              (mapconcat #'switchboard--sb-describe helpers "\n")
+            "You have no helpers."))
+    ("read" (switchboard--sb-read caller args))
+    ("send" (switchboard--sb-send caller (car args) (cadr args)))
+    ("wait" (switchboard--sb-wait caller (cadr (switchboard--sb-options args nil))))
+    ("stop" (let* ((h (switchboard--sb-helper caller (car args)))
+                   (worktree (switchboard--discard-helper h)))
+              (concat (format "Stopped %s." (car args)) (and worktree (concat " " worktree)))))
+    ("keep" (setf (switchboard-session-keep (switchboard--sb-helper caller (car args))) t)
+     (format "Keeping %s until you run: sb release %s" (car args) (car args)))
+    ("release" (setf (switchboard-session-keep (switchboard--sb-helper caller (car args))) nil)
+     (run-at-time (1+ switchboard--agent-linger) nil #'switchboard--prune-helpers)
+     (format "%s will be cleaned up when it's done." (car args)))
+    ("report"
+     (unless (switchboard--helper-p caller)
+       (user-error "Only a helper can report; you weren't started with sb run"))
+     (unless (and (car args) (not (string-blank-p (car args))))
+       (user-error "Give the result as one quoted argument"))
+     (setf (switchboard-session-report caller) (car args))
+     "Reported. It reaches your parent when this turn ends.")
+    (_ (user-error "Unknown command %s; see: sb --skill" command))))
+
+;;;###autoload
+(defun switchboard-sb (id args-file reply-file)
+  "Handle one run of bin/sb from session ID.
+ARGS-FILE holds its arguments as strings; this writes its exit code and
+output to REPLY-FILE.  They come through files so that nothing an agent
+passes is ever part of an expression Emacs evaluates."
+  (let* ((args (with-temp-buffer
+                 (insert-file-contents args-file)
+                 (let (forms form)
+                   (while (setq form (ignore-errors (read (current-buffer))))
+                     (push form forms))
+                   (nreverse forms))))
+         (result (condition-case err
+                     (let ((caller (or (switchboard--find id)
+                                       (user-error "This session is no longer in Switchboard"))))
+                       (unless (cl-every #'stringp args)
+                         (user-error "Couldn't read the arguments"))
+                       (switchboard--sb-dispatch caller (car args) (cdr args)))
+                   (error (cons 1 (error-message-string err)))))
+         (result (if (consp result) result (cons 0 result)))
+         (coding-system-for-write 'utf-8))
+    ;; Written beside it and renamed, so sb never reads half of it.
+    (let ((partial (concat reply-file ".partial")))
+      (with-temp-file partial
+        (insert (format "%d\n%s\n" (car result) (cdr result))))
+      (rename-file partial reply-file t))
+    nil))
+
+(defvar switchboard--sb-timer nil)
+
+(defun switchboard--sb-spool ()
+  "The folder bin/sb leaves requests in, private to you."
+  (let ((dir (expand-file-name (locate-user-emacs-file "switchboard/sb/"))))
+    (unless (file-directory-p dir)
+      (make-directory dir t)
+      (set-file-modes dir #o700))
+    (directory-file-name dir)))
+
+(defun switchboard--sb-poll ()
+  "Answer the requests waiting in the spool, or stop looking once there
+are no sessions to ask."
+  (if (null switchboard--sessions)
+      (progn (cancel-timer switchboard--sb-timer)
+             (setq switchboard--sb-timer nil))
+    (dolist (request (directory-files (switchboard--sb-spool) t "--[^.]+\\.req\\'"))
+      (let* ((base (file-name-sans-extension request))
+             (working (concat base ".working"))
+             (id (car (split-string (file-name-nondirectory base) "--"))))
+        ;; Moved first: running it can take long enough for the next tick.
+        (when (ignore-errors (rename-file request working) t)
+          (unwind-protect (switchboard-sb id working (concat base ".reply"))
+            (ignore-errors (delete-file working))))))))
+
+(defun switchboard--sb-listen ()
+  (unless switchboard--sb-timer
+    (setq switchboard--sb-timer (run-with-timer 0.3 0.3 #'switchboard--sb-poll))))
+
 ;;; The list
 
 (defvar switchboard--group 'project "Group the list by `project' or `status'.")
@@ -1629,13 +2173,16 @@ One of `open', `draft', `merged' or `closed'."
 (defun switchboard--shown-status (s)
   "S's status as the list shows it: `merged' once its pull request is,
 while it's idle; a turn that needs you still shows.  An exited or paused
-session keeps its status, and its label adds MERGED."
+session keeps its status, and its label adds MERGED.  A helper needing
+you shows on its parent too, which may be collapsed over it."
   (let ((status (switchboard-session-status s)))
-    (if (and (eq status 'ready)
-             (not (switchboard-session-unread s))
-             (eq (switchboard--pr-state s) 'merged))
-        'merged
-      status)))
+    (cond ((and (memq status '(working agents ready)) (switchboard--helper-needing-you s))
+           'waiting)
+          ((and (eq status 'ready)
+                (not (switchboard-session-unread s))
+                (eq (switchboard--pr-state s) 'merged))
+           'merged)
+          (t status))))
 
 (defun switchboard--status-key (s)
   (if (and (eq (switchboard-session-status s) 'ready) (switchboard-session-unread s))
@@ -1652,7 +2199,7 @@ session keeps its status, and its label adds MERGED."
   "S's label as ((TEXT . FACE) ...): its status, how many subagents it
 has running, and for an exited or paused session whose pull request was
 merged, \" | \" and MERGED too."
-  (let* ((agents (switchboard--live-agents s))
+  (let* ((agents (+ (switchboard--live-agents s) (switchboard--live-helpers s)))
          (status (pcase (switchboard--shown-status s)
                   ('working "WORKING") ('waiting "NEEDS YOU") ('error "ERROR")
                   ('agents (concat "WAITING ON " (switchboard--agents-count agents)))
@@ -1718,7 +2265,9 @@ merged, \" | \" and MERGED too."
 
 (defun switchboard--groups ()
   "Return ((KEY TITLE . SESSIONS) ...) in display order."
-  (let ((sessions (cl-remove-if-not #'switchboard--matches-p switchboard--sessions)))
+  (let ((sessions (cl-remove-if-not #'switchboard--matches-p
+                                    ;; Helpers are drawn under their parents.
+                                    (cl-remove-if #'switchboard--helper-p switchboard--sessions))))
     (if (eq switchboard--group 'status)
         (cl-loop for key in switchboard--status-order
                  for members = (cl-remove-if-not (lambda (s) (eq (switchboard--status-key s) key))
@@ -1742,7 +2291,7 @@ merged, \" | \" and MERGED too."
 (defun switchboard--shown-p (key s)
   "Folded groups still show sessions that need you or errored."
   (or (not (member key switchboard--folded))
-      (memq (switchboard-session-status s) '(waiting error))))
+      (memq (switchboard--shown-status s) '(waiting error))))
 
 (defun switchboard--visible ()
   "Sessions in list order, as numbered by 1-9."
@@ -2012,13 +2561,17 @@ pixel short of the edge, and end with this."
                                      ('waiting 0) ('running 1) (_ 2)))))
 
 (defun switchboard--agents-expanded-p (s)
-  "Non-nil if S's subagents get a line each, under its row: its terminal
-is on screen, or one of them needs you.  Otherwise its row has a bar.
-Not point's row: rows would change height as you moved through them."
-  (and (switchboard-session-agents s)
-       (or (switchboard--on-screen-p s)
-           (cl-find 'waiting (switchboard-session-agents s) :key #'switchboard-agent-status))
-       t))
+  "Non-nil if S's subagents and helpers get a line each, under its row: its
+terminal or a helper's is on screen, or one of them needs you.  Otherwise
+its row has a bar.  Not point's row: rows would change height as you moved
+through them."
+  (let ((helpers (switchboard--descendants s)))
+    (and (or (switchboard-session-agents s) helpers)
+         (or (switchboard--on-screen-p s)
+             (cl-some #'switchboard--on-screen-p helpers)
+             (cl-find 'waiting (switchboard-session-agents s) :key #'switchboard-agent-status)
+             (cl-find 'waiting helpers :key #'switchboard-session-status))
+         t)))
 
 (defun switchboard--agent-face (a &optional bar)
   (pcase (switchboard-agent-status a)
@@ -2091,6 +2644,58 @@ Its square, type, what it's for and the tool it runs, and for how long."
     (switchboard--svg-text svg age age-x y fs dim :text-anchor "end")
     (switchboard--image svg)))
 
+(defun switchboard--helper-row (h depth last width selected pal)
+  "Image for helper H's line under its parent, DEPTH steps in.
+LAST ends the tree; SELECTED is point's row.  Its square, name and agent,
+then what it needs from you, its branch and changes if it has its own
+worktree, or else its task; and how long it's been in this state."
+  (pcase-let* ((fs (switchboard--font-size))
+               (h-px (round (* 1.55 fs)))
+               (cy (/ h-px 2.0))
+               (y (+ cy (* 0.35 fs)))
+               (`(,tree0 . ,chip0) (switchboard--agent-indent fs))
+               (step (round (* 1.2 fs)))
+               (tree-x (+ tree0 (* depth step)))
+               (chip-x (+ chip0 (* depth step)))
+               (chip-w (round (* 1.25 fs)))
+               (chip-h (round (* 0.95 fs)))
+               (status (switchboard-session-status h))
+               (dim (plist-get pal :dim))
+               (color (switchboard--color (switchboard--face h)))
+               (name (switchboard--title h))
+               (name-x (+ chip-x chip-w 8))
+               (age (switchboard--age h))
+               (age-x (- width 10))
+               (end-x (- age-x (switchboard--text-width age fs) 8))
+               (changes-w (switchboard--changes-width h fs))
+               (svg (svg-create width h-px)))
+    (svg-rectangle svg 0 0 width h-px :fill (plist-get pal :bg))
+    (when (or selected (switchboard--on-screen-p h))
+      (apply #'svg-rectangle svg 8.5 0.5 (- width 11) (- h-px 1) :rx 3
+             :fill (if selected
+                       (switchboard--color 'switchboard-header-focused t)
+                     (plist-get pal :bg))
+             (list :stroke (switchboard--color 'window-divider) :stroke-width 1)))
+    (svg-line svg tree-x 0 tree-x (if last cy h-px) :stroke dim :stroke-opacity 0.6 :stroke-width 1.5)
+    (svg-line svg tree-x cy (- chip-x 2) cy :stroke dim :stroke-opacity 0.6 :stroke-width 1.5)
+    (switchboard--draw-chip svg h chip-x (/ (- h-px chip-h) 2.0) chip-w chip-h pal)
+    (switchboard--svg-text svg name name-x y fs (if (eq status 'waiting) color (plist-get pal :fg))
+                           :font-weight (if (eq status 'waiting) "bold" "normal"))
+    (let* ((badge-x (+ name-x (switchboard--text-width name fs) 8))
+           (text-x (+ badge-x (switchboard--draw-badge svg h badge-x y fs pal) 8))
+           (text (string-replace
+                  "\n" " "
+                  (cond ((and (eq status 'waiting) (switchboard-session-detail h)))
+                        ((switchboard-session-worktree h)
+                         (concat (or (switchboard-session-branch h) "")
+                                 (if (switchboard-session-held h) " unmerged" "")))
+                        (t (or (switchboard-session-task h) ""))))))
+      (switchboard--svg-text svg (switchboard--clip text fs (- end-x changes-w text-x))
+                             text-x y fs dim))
+    (switchboard--draw-changes svg h end-x y fs)
+    (switchboard--svg-text svg age age-x y fs dim :text-anchor "end")
+    (switchboard--image svg)))
+
 (defun switchboard--agents-more-row (agents hidden width pal)
   "Image under a session's last subagent line when HIDDEN more didn't
 fit: a bar for all its AGENTS, and +HIDDEN."
@@ -2120,7 +2725,8 @@ has focus; another session on screen (in a split) only gets an outline."
          (l1 (round (* 1.6 fs)))
          (l2 (if switchboard-compact 0 (round (* 1.45 fs))))
          ;; Subagents without a line each get a bar along the bottom.
-         (bar (and (switchboard-session-agents s) (not (switchboard--agents-expanded-p s))))
+         (bar (and (or (switchboard-session-agents s) (switchboard--helpers s))
+                   (not (switchboard--agents-expanded-p s))))
          (bar-h (if bar (round (* 0.8 fs)) 0))
          (h (+ l1 l2 bar-h (if switchboard-compact 2 6)))
          (y1 (+ 2 (/ (+ l1 (* 0.7 fs)) 2)))
@@ -2171,7 +2777,13 @@ has focus; another session on screen (in a split) only gets an outline."
              (text-x (+ name-x label-w 14))
              ;; What's pending (a permission request, an error), if anything.
              ;; Not the first prompt: Claude's title for the session says it.
-             (text (string-replace "\n" " " (or (switchboard-session-detail s) "")))
+             (text (string-replace
+                    "\n" " "
+                    (or (switchboard-session-detail s)
+                        (when-let* ((h (switchboard--helper-needing-you s)))
+                          (format "%s · %s" (switchboard--title h)
+                                  (or (switchboard-session-detail h) "")))
+                        "")))
              (changes-w (switchboard--changes-width s small))
              (icon-w (round (* 0.9 small)))
              (wt-w (if (switchboard-session-worktree s) (+ icon-w 4) 0))
@@ -2198,7 +2810,7 @@ has focus; another session on screen (in a split) only gets an outline."
                                            icon-w (plist-get pal :dim))))))
         (switchboard--draw-changes svg s age-x y2 small)))
     (when bar
-      (switchboard--draw-agent-bar svg (switchboard--agents-shown s) name-x age-x
+      (switchboard--draw-agent-bar svg (switchboard--bar-agents s) name-x age-x
                                    (+ l1 l2 (/ bar-h 2.0) 1) fs))
     (switchboard--image svg)))
 
@@ -2285,7 +2897,13 @@ FOCUSED means the list's window is selected."
   (let* ((fs (switchboard--font-size))
          (size fs)
          (h (round (* 2.1 fs)))
-         (count (lambda (key) (cl-count key switchboard--sessions :key #'switchboard--status-key)))
+         ;; By their own status: a parent showing its helper's prompt isn't a second one.
+         (count (lambda (key)
+                  (cl-count-if (lambda (s)
+                                 (and (eq (switchboard--status-key s) key)
+                                      (or (not (eq key 'waiting))
+                                          (eq (switchboard-session-status s) 'waiting))))
+                               switchboard--sessions)))
          (pills (delq nil
                       (mapcar (pcase-lambda (`(,n ,face ,long ,short))
                                 (and (> n 0) (list n face long short)))
@@ -2426,6 +3044,7 @@ works, and the ages shown."
                (at-closed (and (not at) (get-text-property (point) 'switchboard-recent)))
                (selected (cond ((or at-group at-closed) nil)
                                ((memq at visible) at)
+                               ((memq at (switchboard--listed-helpers visible)) at)
                                (t (car visible))))
                (focused (and win (eq win (selected-window))))
                (waiting (cl-remove-if-not (lambda (s) (eq (switchboard-session-status s) 'waiting))
@@ -2464,11 +3083,13 @@ works, and the ages shown."
                                       (switchboard--cached
                                        (list 'row (copy-sequence s) index width sel
                                              (and (switchboard--on-screen-p s) t)
-                                             (switchboard--age s) (switchboard--spinner-key s))
+                                             (switchboard--age s) (switchboard--spinner-key s)
+                                             (switchboard--helpers-key s))
                                        (lambda () (switchboard--row s index width sel pal))))
                                     'switchboard-session s)
                         (switchboard--eol bg))
                 (when (switchboard--agents-expanded-p s)
+                  (switchboard--insert-helpers s 0 selected width pal bg)
                   (switchboard--insert-agents s width pal bg)))))
           (when switchboard--recent
             (insert (propertize (let ((folded (and (memq 'recent switchboard--folded) t))
@@ -2505,6 +3126,24 @@ works, and the ages shown."
           (when win (set-window-point win (point)))
           (force-mode-line-update)))))
   (switchboard--flush-images))
+
+(defun switchboard--insert-helpers (s depth selected width pal bg)
+  "Insert a line for each of S's helpers, DEPTH steps in, and for theirs.
+Unlike a subagent's, a helper's line is a session's: moving by rows lands
+on it, and the keys for a session work on it."
+  (let* ((helpers (switchboard--helpers s))
+         (final (car (last helpers))))
+    (dolist (h helpers)
+      (let ((last (and (eq h final) (null (switchboard-session-agents s))))
+            (sel (eq h selected)))
+        (insert (propertize (switchboard--cached
+                             (list 'helper (copy-sequence h) depth last width sel
+                                   (and (switchboard--on-screen-p h) t)
+                                   (switchboard--age h) (switchboard--spinner-key h))
+                             (lambda () (switchboard--helper-row h depth last width sel pal)))
+                            'switchboard-session h)
+                (switchboard--eol bg)))
+      (switchboard--insert-helpers h (1+ depth) selected width pal bg))))
 
 (defun switchboard--insert-agents (s width pal bg)
   "Insert a line for each of S's subagents, up to `switchboard--agent-lines'.
@@ -2940,8 +3579,10 @@ the next one in the same window. Anywhere else it is `next-buffer'."
   "Open the next session that needs you.
 Order: permission prompts (oldest first), errors, then unread finished turns."
   (interactive)
-  (let* ((rank (lambda (s) (pcase (switchboard--status-key s)
-                             ('waiting 0) ('error 1) ('unread 2))))
+  (let* ((rank (lambda (s) (if (eq (switchboard-session-status s) 'waiting)
+                               0        ; not a parent showing its helper's prompt
+                             (pcase (switchboard--status-key s)
+                               ('error 1) ('unread 2)))))
          (queue (sort (cl-remove-if-not rank switchboard--sessions)
                       (lambda (a b) (let ((ra (funcall rank a)) (rb (funcall rank b)))
                                       (if (= ra rb)
@@ -3031,8 +3672,10 @@ to remove that and its branch too; otherwise they're kept, for
               (ghostel-query-before-killing nil))
           (kill-buffer buf)))
       (switchboard--clear-notification s)
+      (switchboard--stop-helpers s)
       (setq switchboard--sessions (delq s switchboard--sessions))
-      (switchboard--remember-closed s)
+      (unless (switchboard--helper-p s)
+        (switchboard--remember-closed s))
       (switchboard--save-soon)
       (switchboard--render)
       (switchboard--offer-worktree-removal s))))
@@ -3163,6 +3806,7 @@ Its terminal stays, with what it showed; on a paused session, resume it."
            (signal-process (or (process-get proc 'ghostel--native-pid) proc) 'SIGTERM)
            (setf (switchboard-session-detail s) nil)
            (switchboard--clear-agents s)
+           (switchboard--stop-helpers s)
            (switchboard--set s 'paused)))))
 
 (defun switchboard-resume (s)
