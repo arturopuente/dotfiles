@@ -370,6 +370,10 @@ This command does not push text to `kill-ring'."
 ;; bol) in insert state, which outranks ghostel's keymap, so they edited the
 ;; Emacs buffer instead of reaching the program. Send them on like Ghostty:
 ;; Alt-Backspace deletes a word, Cmd-Backspace sends C-u to kill the line.
+;; S-<return> is Doom's newline too ("Buffer is read-only"); sent on, ghostel
+;; encodes it as CSI 13;2u, which Claude Code reads as a newline in the prompt.
+;; Alt/Cmd-arrows moved Emacs's cursor, not the program's. Like Ghostty, Alt
+;; sends M-b/M-f (word) and Cmd sends C-a/C-e (line start/end).
 (after! ghostel
   ;; ghostel defaults to $SHELL, which the envvar file pins to whatever shell
   ;; ran `doom sync' (it once captured zsh). Terminals get the login shell.
@@ -377,7 +381,12 @@ This command does not push text to `kill-ring'."
   (map! :map ghostel-mode-map
         :i "M-<backspace>" #'ghostel--send-event
         :i "M-DEL"         #'ghostel--send-event
-        :i "s-<backspace>" (cmd! (ghostel-send-string "\C-u"))))
+        :i "S-<return>"    #'ghostel--send-event
+        :i "s-<backspace>" (cmd! (ghostel-send-string "\C-u"))
+        :i "M-<left>"      (cmd! (ghostel-send-string "\eb"))
+        :i "M-<right>"     (cmd! (ghostel-send-string "\ef"))
+        :i "s-<left>"      (cmd! (ghostel-send-string "\C-a"))
+        :i "s-<right>"     (cmd! (ghostel-send-string "\C-e"))))
 
 ;; Terminals look like Ghostty: its Monokai Pro Light Sun colors, and its
 ;; 22px rows for Berkeley Mono 18, where Emacs gives 21. These are ghostel's
