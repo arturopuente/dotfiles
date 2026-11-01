@@ -374,6 +374,9 @@ This command does not push text to `kill-ring'."
 ;; encodes it as CSI 13;2u, which Claude Code reads as a newline in the prompt.
 ;; Alt/Cmd-arrows moved Emacs's cursor, not the program's. Like Ghostty, Alt
 ;; sends M-b/M-f (word) and Cmd sends C-a/C-e (line start/end).
+;; Cmd-V (simpleclip) and C-_/Cmd-Z (undo) tried to edit the read-only buffer:
+;; paste goes to the program as a paste, and both undos send C-_, which is
+;; undo in Claude Code's prompt. Alt-Delete deletes the next word.
 (after! ghostel
   ;; ghostel defaults to $SHELL, which the envvar file pins to whatever shell
   ;; ran `doom sync' (it once captured zsh). Terminals get the login shell.
@@ -386,7 +389,13 @@ This command does not push text to `kill-ring'."
         :i "M-<left>"      (cmd! (ghostel-send-string "\eb"))
         :i "M-<right>"     (cmd! (ghostel-send-string "\ef"))
         :i "s-<left>"      (cmd! (ghostel-send-string "\C-a"))
-        :i "s-<right>"     (cmd! (ghostel-send-string "\C-e"))))
+        :i "s-<right>"     (cmd! (ghostel-send-string "\C-e"))
+        :i "M-<delete>"    (cmd! (ghostel-send-string "\ed"))
+        :i "S-<left>"      #'ghostel--send-event
+        :i "S-<right>"     #'ghostel--send-event
+        :i "C-_"           (cmd! (ghostel-send-string "\C-_"))
+        :i "s-z"           (cmd! (ghostel-send-string "\C-_"))
+        :i "s-v"           (cmd! (ghostel-paste-string (simpleclip-get-contents)))))
 
 ;; Terminals look like Ghostty: its Monokai Pro Light Sun colors, and its
 ;; 22px rows for Berkeley Mono 18, where Emacs gives 21. These are ghostel's
