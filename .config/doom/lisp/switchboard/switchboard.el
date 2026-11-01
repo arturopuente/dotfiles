@@ -25,7 +25,9 @@
 ;;
 ;; Codex skips hooks until you trust them with /hooks, so its sessions also
 ;; get a `notify' program, which needs no trust. Until a session's hooks
-;; report, notify ends its turns and RET in it means WORKING.
+;; report, notify ends its turns and RET in it means WORKING. A Codex turn
+;; that fails sends neither Stop nor notify, only a record in its rollout,
+;; which is watched while the turn runs.
 ;;
 ;; ESC has no event in every harness: it is inferred from the keys you send,
 ;; and means STOPPED.
@@ -522,8 +524,8 @@ SWITCHBOARD_ID it took with it from S's terminal."
                      (resume (list "--continue")))
                (and prompt (list prompt)))))
     ('codex
-     ;; --no-daemon: the shared server would run hooks in its own
-     ;; environment, without this session's SWITCHBOARD_ID.
+     ;; --no-daemon: the session stays in its terminal's process, whose
+     ;; environment has SWITCHBOARD_ID, whatever a shared server is doing.
      (append (list "codex")
              (cond ((and resume (switchboard-session-resume-id s))
                     (list "resume" (switchboard-session-resume-id s)))
@@ -860,11 +862,27 @@ Its input_tokens already count the cached ones."
     (when (search-backward "\"type\":\"ai-title\"" nil t)
       (alist-get 'aiTitle (switchboard--line-json)))))
 
+(defun switchboard--codex-file (name)
+  "NAME under Codex's home folder."
+  (expand-file-name name (or (getenv "CODEX_HOME") "~/.codex")))
+
+(defun switchboard--codex-main-rollout (thread)
+  "The rollout of THREAD, if THREAD is a conversation you are having.
+Codex also runs notify for the threads it starts itself: the one that
+writes a title has no rollout, and a subagent's names its parent at the
+top of its own."
+  (when-let* ((rollout (car (file-expand-wildcards
+                             (switchboard--codex-file
+                              (format "sessions/*/*/*/rollout-*-%s.jsonl" thread))))))
+    (with-temp-buffer
+      (insert-file-contents rollout nil 0 4096)
+      (unless (search-forward "\"parent_thread_id\":\"" nil t)
+        rollout))))
+
 (defun switchboard--codex-title (id)
   "The latest name Codex gave its thread ID, if any.
 Codex keeps these in an index of its own, not in the rollout."
-  (let ((index (expand-file-name "session_index.jsonl"
-                                 (or (getenv "CODEX_HOME") "~/.codex"))))
+  (let ((index (switchboard--codex-file "session_index.jsonl")))
     (when id
       (switchboard--with-file-tail index
         (when (search-backward (format "\"id\":%S" id) nil t)
@@ -1210,6 +1228,56 @@ Return non-nil if any were."
   (and (eq (switchboard-session-harness s) 'codex)
        (not (gethash (switchboard-session-id s) switchboard--codex-hooked))))
 
+(defvar switchboard--codex-turns (make-hash-table :test 'equal)
+  "Session id to the Codex turn its last prompt started.")
+
+(defvar switchboard--codex-sizes (make-hash-table :test 'equal)
+  "Rollout to its size when last read for errors.")
+
+(defvar switchboard--codex-watch-timer nil)
+
+(defun switchboard--codex-turn-error (rollout turn)
+  "Why TURN failed, from Codex's ROLLOUT; nil if it hasn't, or hasn't ended."
+  (switchboard--with-file-tail rollout
+    (catch 'done
+      (while (search-backward "\"type\":\"task_complete\"" nil t)
+        (let ((payload (alist-get 'payload (switchboard--line-json))))
+          (when (equal (alist-get 'type payload) "task_complete")
+            (throw 'done (and (equal (alist-get 'turn_id payload) turn)
+                              (when-let* ((e (alist-get 'error payload)))
+                                (or (alist-get 'message e) "API error"))))))
+        (beginning-of-line))
+      nil)))
+
+(defun switchboard--codex-check-errors ()
+  "Mark Codex sessions whose turn failed.  Return non-nil if any still runs."
+  (let (running)
+    (dolist (s switchboard--sessions running)
+      (when-let* (((eq (switchboard-session-harness s) 'codex))
+                  ((eq (switchboard-session-status s) 'working))
+                  (turn (gethash (switchboard-session-id s) switchboard--codex-turns))
+                  (rollout (switchboard-session-transcript s)))
+        (let ((size (file-attribute-size (file-attributes rollout))))
+          (unless (eql size (gethash rollout switchboard--codex-sizes))
+            (puthash rollout size switchboard--codex-sizes)
+            (when-let* ((why (switchboard--codex-turn-error rollout turn)))
+              (setf (switchboard-session-detail s) why)
+              (switchboard--finish-turn s 'error))))
+        (when (eq (switchboard-session-status s) 'working)
+          (setq running t))))))
+
+(defun switchboard--codex-watch-tick ()
+  (unless (switchboard--codex-check-errors)
+    (cancel-timer switchboard--codex-watch-timer)
+    (setq switchboard--codex-watch-timer nil)))
+
+(defun switchboard--codex-watch-errors (s payload)
+  "Watch the turn PAYLOAD, a prompt S was sent, starts."
+  (puthash (switchboard-session-id s) (alist-get 'turn_id payload) switchboard--codex-turns)
+  (unless switchboard--codex-watch-timer
+    (setq switchboard--codex-watch-timer
+          (run-at-time 2 2 #'switchboard--codex-watch-tick))))
+
 ;;;###autoload
 (defun switchboard-hook (id event &optional file)
   "Record EVENT for session ID; FILE holds its JSON payload.
@@ -1250,7 +1318,9 @@ Called by switchboard-hook.sh through emacsclient."
            (switchboard--save-soon))
          (setf (switchboard-session-detail s) nil)
          (switchboard--update-tokens s payload)
-         (switchboard--set s 'working))
+         (switchboard--set s 'working)
+         (when (eq (switchboard-session-harness s) 'codex)
+           (switchboard--codex-watch-errors s payload)))
         ((or "PreToolUse" "PostToolUse" "PostToolUseFailure")
          (when (equal event "PostToolUse")
            (switchboard--update-git-soon s))
@@ -1268,9 +1338,14 @@ Called by switchboard-hook.sh through emacsclient."
                         (or (member tool '("Agent" "Task"))
                             (string-suffix-p "spawn_agent" tool))))
              (switchboard--expect-agent s (alist-get 'tool_input payload)))
-           (when (eq (switchboard-session-status s) 'waiting)
-             (setf (switchboard-session-detail s) nil))
-           (switchboard--set s 'working)))
+           ;; The main agent running a tool, here Codex polling wait_agent,
+           ;; doesn't answer a prompt one of its agents is waiting on.
+           (unless (and (eq (switchboard-session-status s) 'waiting)
+                        (cl-find 'waiting (switchboard-session-agents s)
+                                 :key #'switchboard-agent-status))
+             (when (eq (switchboard-session-status s) 'waiting)
+               (setf (switchboard-session-detail s) nil))
+             (switchboard--set s 'working))))
         ("PermissionRequest"
          (let* ((input (alist-get 'tool_input payload))
                 (what (format "%s: %s" (alist-get 'tool_name payload)
@@ -1296,6 +1371,10 @@ Called by switchboard-hook.sh through emacsclient."
              (switchboard--change-agent s a :background t)))
          (switchboard--schedule-render))
         ("SubagentStop"
+         (when-let* ((a (cl-find-if (lambda (a) (and (equal (switchboard-agent-id a) agent-id)
+                                                     (eq (switchboard-agent-status a) 'waiting)))
+                                    (switchboard-session-agents s))))
+           (switchboard--agent-resumed s a))
          (switchboard--end-agents s (lambda (a) (equal (switchboard-agent-id a) agent-id)))
          (switchboard--update-git-soon s)
          ;; The last background agent is done: the main agent picks up
@@ -1308,12 +1387,18 @@ Called by switchboard-hook.sh through emacsclient."
                 (switchboard--finish-turn s 'ready))
                (t (switchboard--set s 'working))))
         ("Stop"
-         (setf (switchboard-session-detail s) nil)
          (switchboard--update-git s)
          (switchboard--update-tokens s payload)
-         (if (> (switchboard--reconcile-agents s payload) 0)
-             (switchboard--set s 'agents)
-           (switchboard--finish-turn s 'ready)))
+         (let ((live (switchboard--reconcile-agents s payload))
+               (blocked (cl-remove 'waiting (switchboard-session-agents s)
+                                   :key #'switchboard-agent-status :test-not #'eq)))
+           ;; An agent still needs you, and S waits on it once you answer.
+           (if blocked
+               (dolist (a blocked) (switchboard--change-agent s a :resume 'agents))
+             (setf (switchboard-session-detail s) nil)
+             (if (> live 0)
+                 (switchboard--set s 'agents)
+               (switchboard--finish-turn s 'ready)))))
         ("StopFailure"
          (setf (switchboard-session-detail s)
                (let ((e (or (alist-get 'error payload) (alist-get 'error_type payload)
@@ -1328,10 +1413,12 @@ Called by switchboard-hook.sh through emacsclient."
          (switchboard--schedule-render))
         ("notify"                       ; Codex: a turn finished
          ;; Stop says the same, and knows about agents still running.
-         (when (switchboard--codex-untrusted-p s)
-           (when-let* ((thread (alist-get 'thread-id payload)))
-             (setf (switchboard-session-resume-id s) thread)
-             (switchboard--save-soon))
+         (when-let* (((switchboard--codex-untrusted-p s))
+                     (thread (alist-get 'thread-id payload))
+                     (rollout (switchboard--codex-main-rollout thread)))
+           (setf (switchboard-session-resume-id s) thread)
+           (switchboard--update-tokens s `((transcript_path . ,rollout)))
+           (switchboard--save-soon)
            (setf (switchboard-session-detail s) nil)
            (switchboard--finish-turn s 'ready)
            (message "Switchboard: %s reports little until you trust its hooks: run /hooks in it"
@@ -1349,8 +1436,11 @@ Called by switchboard-hook.sh through emacsclient."
   (switchboard--note-input (pcase string ((or "\e" "\x03") 'escape) ("\r" 'return))))
 
 (defun switchboard--stop-turn (s)
-  "You interrupted S's turn, which takes its foreground agents with it."
-  (switchboard--end-agents s (lambda (a) (not (switchboard-agent-background a))))
+  "You interrupted S's turn, which takes its foreground agents with it.
+So too any agent waiting on a prompt: under Codex, ESC aborts its turn
+and no SubagentStop follows."
+  (switchboard--end-agents s (lambda (a) (or (not (switchboard-agent-background a))
+                                             (eq (switchboard-agent-status a) 'waiting))))
   (switchboard--set s 'stopped))
 
 (defun switchboard--note-input (key)
