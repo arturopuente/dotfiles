@@ -1144,9 +1144,12 @@ Called by switchboard-hook.sh through emacsclient."
          ;; another session.  Claude Code's daemon inherits the env of the
          ;; session that started it, and so does every session it runs
          ;; in the background, forked from whichever terminal sent it.
+         (named (switchboard--find id))
          (s (or (switchboard--find-conversation conversation)
-                (switchboard--adopt-fork conversation)
-                (switchboard--find id)))
+                ;; Only Claude Code forks; looking for one runs ps.
+                (and (or (null named) (eq (switchboard-session-harness named) 'claude))
+                     (switchboard--adopt-fork conversation))
+                named))
          ;; Set when a subagent, not the main agent, sent EVENT.
          (agent-id (alist-get 'agent_id payload)))
     ;; A paused session's process may still report the turn it was cut off in.

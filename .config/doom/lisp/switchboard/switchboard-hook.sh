@@ -52,5 +52,7 @@ esac
 "${SWITCHBOARD_EMACSCLIENT:-emacsclient}" \
   ${SWITCHBOARD_SOCKET:+--socket-name="$SWITCHBOARD_SOCKET"} --no-wait \
   --eval "(switchboard-hook \"$SWITCHBOARD_ID\" \"$event\" \"$payload\")" \
-  > /dev/null 2>&1
+  > /dev/null 2>&1 ||
+  # Emacs deletes the payload once it reads it; if it never got the call, do.
+  { [ -z "$payload" ] || rm -f "$payload"; }
 exit 0

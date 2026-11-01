@@ -778,5 +778,26 @@ recorded in `switchboard-test--notified'."
     (should (eq (switchboard-agent-status (switchboard-test--agent s "bg1")) 'done))
     (should (eq (switchboard-session-status s) 'ready))))
 
+(ert-deftest switchboard-test-pi-background-subagent-tool-after-the-turn ()
+  (switchboard-test--with-pi-session s
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "01a197b5") (prompt . "go")))
+    (switchboard-test--hook "SubagentStart" '((session_id . "01a197b5") (agent_id . "bg1")
+                                              (agent_type . "scout") (background . t)))
+    (switchboard-test--hook "Stop" '((session_id . "01a197b5")))
+    ;; Its tool shows on the agent; the session's turn stays over.
+    (switchboard-test--hook "PreToolUse" '((session_id . "01a197b5") (agent_id . "bg1")
+                                           (agent_type . "scout") (tool_name . "bash")))
+    (should (equal (switchboard-agent-tool (switchboard-test--agent s "bg1")) "bash"))
+    (should (eq (switchboard-session-status s) 'agents))))
+
+(ert-deftest switchboard-test-pi-session-does-not-look-for-forks ()
+  (switchboard-test--with-session s
+    (setf (switchboard-session-harness s) 'pi)
+    (cl-letf (((symbol-function 'switchboard--update-git) #'ignore)
+              ((symbol-function 'switchboard--fork-parent)
+               (lambda (_) (error "Looked for a fork"))))
+      (switchboard-test--hook "SessionStart" '((session_id . "01a197b5") (source . "startup")))
+      (should (equal (switchboard-session-resume-id s) "01a197b5")))))
+
 (provide 'switchboard-test)
 ;;; switchboard-test.el ends here

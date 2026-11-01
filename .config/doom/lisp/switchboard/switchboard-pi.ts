@@ -15,11 +15,15 @@
 //   SubagentStart/Stop pi-subagents' children: foreground ones from the
 //                      subagent tool's progress, background ones from its
 //                      async-started and async-complete events
+//   PreToolUse         with agent_id: the tool a child runs; a background
+//                      child's comes from pi-subagents' status, read
+//                      when it says its jobs changed
 //
 // Payloads carry only what Switchboard reads, and go out one at a time in
 // the order Pi raised them.
 
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -78,7 +82,8 @@ export default function (pi: any) {
 
   // Foreground children, by "runId:index", and the tool calls that started
   // them; background ones by run id.
-  const children = new Map<string, { call: string; tool?: string; done: boolean; background?: boolean }>();
+  type Child = { call: string; agent: string; tool?: string; done: boolean; background?: boolean };
+  const children = new Map<string, Child>();
   const calls = new Map<string, any>(); // subagent tool call id to its arguments
   // Child INDEX's task in a subagent call: one task, or one of parallel ones.
   const taskOf = (callId: string | undefined, index = 0) => {
@@ -88,7 +93,7 @@ export default function (pi: any) {
 
   const startChild = (id: string, call: string | undefined, agent: string, tasks: unknown[], background?: boolean) => {
     if (children.has(id)) return children.get(id)!;
-    const c = { call: call ?? "", done: false, background };
+    const c: Child = { call: call ?? "", agent, done: false, background };
     children.set(id, c);
     const description = tasks.map(summary).find((t) => t);
     send("SubagentStart", { ...base(), agent_id: id, agent_type: agent, description, background });
@@ -210,4 +215,58 @@ export default function (pi: any) {
   pi.events?.on?.("subagent:async-complete", (d: any) => {
     if (active) stopChild(d?.runId ?? d?.id);
   });
+
+  // A background child's tool: pi-subagents only hints that its jobs
+  // changed, up to once a second per run while one works, so read its
+  // status at most every 250 ms, and once more if it changed meanwhile.
+  const rpc = (method: string, params: object) =>
+    new Promise<any>((resolve) => {
+      const requestId = randomUUID();
+      const done = (reply?: any) => {
+        clearTimeout(timeout);
+        off?.();
+        resolve(reply);
+      };
+      const off = pi.events.on(`subagents:rpc:v1:reply:${requestId}`, done);
+      const timeout = setTimeout(done, 5000);
+      pi.events.emit("subagents:rpc:v1:request", { version: 1, requestId, method, params });
+    });
+
+  // A run's tool, or else the first one its steps (chain, parallel) run.
+  const toolOf = (run: any): string | undefined =>
+    run?.activity?.currentTool ?? (run?.children ?? []).map(toolOf).find((t: unknown) => t);
+
+  const readTools = async () => {
+    const reply = await rpc("status", {});
+    for (const run of (reply?.success && reply.data?.asyncSnapshot?.runs) || []) {
+      const c = children.get(run?.id);
+      const tool = c && !c.done && c.background ? toolOf(run) : undefined;
+      if (tool && tool !== c!.tool) {
+        c!.tool = tool;
+        send("PreToolUse", { ...base(), agent_id: run.id, agent_type: c!.agent, tool_name: tool });
+      }
+    }
+  };
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let reading = false;
+  let again = false;
+  const changed = () => {
+    if (!active || timer) return;
+    if (![...children.values()].some((c) => c.background && !c.done)) return;
+    timer = setTimeout(async () => {
+      timer = undefined;
+      if (reading) return void (again = true);
+      reading = true;
+      try {
+        await readTools();
+      } catch {}
+      reading = false;
+      if (again) {
+        again = false;
+        changed();
+      }
+    }, 250);
+  };
+  pi.events?.on?.("subagent:jobs-changed", changed);
 }
