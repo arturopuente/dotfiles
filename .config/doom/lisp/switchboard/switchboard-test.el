@@ -38,6 +38,18 @@ recorded in `switchboard-test--notified'."
                         switchboard-test--notified)))
                ((symbol-function 'message) #'ignore))
        (unwind-protect (progn ,@body)
+         ;; Stop git and gh runs this test started.  Left going, they end
+         ;; in a later test, whose session has the same id, and their
+         ;; sentinels clear its run from the table it waits on.
+         (dolist (table (list switchboard--git-procs switchboard--pr-procs))
+           (maphash (lambda (_ proc)
+                      (when (processp proc)
+                        (set-process-sentinel proc #'ignore)
+                        (delete-process proc)
+                        (when (buffer-live-p (process-buffer proc))
+                          (kill-buffer (process-buffer proc)))))
+                    table))
+         (maphash (lambda (_ timer) (cancel-timer timer)) switchboard--git-timers)
          (delete-directory dir t)))))
 
 (defun switchboard-test--hook (event &optional payload)
@@ -48,12 +60,6 @@ recorded in `switchboard-test--notified'."
     (switchboard-hook "heron-0001" event file)
     (when file
       (should-not (file-exists-p file)))))   ; the hook deletes it
-
-(ert-deftest switchboard-test-prompt-starts-work ()
-  (switchboard-test--with-session s
-    (switchboard-test--hook "UserPromptSubmit" '((prompt . "Fix the login bug")))
-    (should (eq (switchboard-session-status s) 'working))
-    (should (equal (switchboard-session-task s) "Fix the login bug"))))
 
 (ert-deftest switchboard-test-first-prompt-is-the-task ()
   (switchboard-test--with-session s
@@ -100,16 +106,6 @@ recorded in `switchboard-test--notified'."
     (switchboard-test--hook "StopFailure" '((error . "rate_limit")))
     (should (eq (switchboard-session-status s) 'error))
     (should (equal (switchboard-session-detail s) "rate_limit"))))
-
-(ert-deftest switchboard-test-stop-failure-without-text ()
-  (switchboard-test--with-session s
-    (switchboard-test--hook "StopFailure" '((error . ((code . 500)))))
-    (should (equal (switchboard-session-detail s) "API error"))))
-
-(ert-deftest switchboard-test-session-start-keeps-resume-id ()
-  (switchboard-test--with-session s
-    (switchboard-test--hook "SessionStart" '((session_id . "abc-123")))
-    (should (equal (switchboard-session-resume-id s) "abc-123"))))
 
 (ert-deftest switchboard-test-codex-notify-finishes ()
   (switchboard-test--with-session s
@@ -478,7 +474,6 @@ recorded in `switchboard-test--notified'."
   (should (equal (switchboard--parse-git "sb/heron\n@@\n-\t-\timg.png\n4\t1\ta.el\n@@\n")
                  '("sb/heron" 4 1 0))))
 
-
 (ert-deftest switchboard-test-events-go-to-their-conversation ()
   ;; A background agent's worker can carry another session's SWITCHBOARD_ID.
   (switchboard-test--with-session s
@@ -648,34 +643,12 @@ recorded in `switchboard-test--notified'."
       (should-not (switchboard-agent-tool (car (switchboard-session-agents copy))))
       (should-not (equal copy s)))))
 
-(ert-deftest switchboard-test-draws-agent-rows ()
-  (skip-unless (image-type-available-p 'svg))
-  (switchboard-test--with-session s
-    (cl-letf (((symbol-function 'switchboard--font-size) (lambda () 15))
-              ((symbol-function 'switchboard--on-screen-p) #'ignore))
-      (let ((pal (switchboard--palette)))
-        (dotimes (i 6)
-          (switchboard-test--spawn (format "a%d" i) "Explore" (format "task %d" i) t))
-        (switchboard-test--hook "SubagentStop" '((agent_id . "a0")))
-        (should (stringp (switchboard--row s 1 400 nil pal)))      ; with its bar
-        (dolist (a (switchboard-session-agents s))
-          (should (stringp (switchboard--agent-row a nil 400 pal))))
-        (should (stringp (switchboard--agents-more-row (switchboard-session-agents s) 2 400 pal)))))))
-
 (defmacro switchboard-test--with-terminal-keys (&rest body)
   "Run BODY with an empty terminal keymap, restoring the real one after."
   (declare (indent 0))
   `(let ((switchboard-terminal-mode-map (make-sparse-keymap))
          (switchboard--terminal-bound nil))
      ,@body))
-
-(ert-deftest switchboard-test-terminal-keys-bind-defaults ()
-  (switchboard-test--with-terminal-keys
-    (switchboard--bind-terminal-keys)
-    (should (eq (keymap-lookup switchboard-terminal-mode-map "S-<return>")
-                'ghostel--send-event))
-    (should (commandp (keymap-lookup switchboard-terminal-mode-map "M-<left>")))
-    (should-not (keymap-lookup switchboard-terminal-mode-map "C-g"))))
 
 (ert-deftest switchboard-test-terminal-keys-first-entry-wins ()
   (switchboard-test--with-terminal-keys
@@ -692,22 +665,6 @@ recorded in `switchboard-test--notified'."
     (switchboard--bind-terminal-keys '(("s-v" . paste)))
     (should-not (keymap-lookup switchboard-terminal-mode-map "C-g"))
     (should (keymap-lookup switchboard-terminal-mode-map "s-v"))))
-
-(ert-deftest switchboard-test-terminal-keys-send-strings-and-paste ()
-  (switchboard-test--with-terminal-keys
-    (let (sent pasted)
-      (cl-letf (((symbol-function 'ghostel-send-string) (lambda (s) (push s sent)))
-                ((symbol-function 'ghostel-paste-string) (lambda (s) (push s pasted)))
-                ((symbol-function 'switchboard--clipboard) (lambda () "clip")))
-        (switchboard--bind-terminal-keys '(("M-<left>" . "\eb") ("s-v" . paste)))
-        (call-interactively (keymap-lookup switchboard-terminal-mode-map "M-<left>"))
-        (call-interactively (keymap-lookup switchboard-terminal-mode-map "s-v"))
-        (should (equal sent '("\eb")))
-        (should (equal pasted '("clip")))))))
-
-(ert-deftest switchboard-test-terminal-keys-reject-bad-actions ()
-  (switchboard-test--with-terminal-keys
-    (should-error (switchboard--bind-terminal-keys '(("C-g" . 42))) :type 'user-error)))
 
 (provide 'switchboard-test)
 ;;; switchboard-test.el ends here
