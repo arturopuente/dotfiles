@@ -350,6 +350,15 @@ recorded in `switchboard-test--notified'."
       (should (equal (switchboard-session-tokens s) 14265))
       (should (equal (switchboard-session-title s) "Fix the parser")))))
 
+(ert-deftest switchboard-test-menu-marks-missing-harnesses ()
+  (let ((exec-path nil))
+    (should (switchboard--harness-missing-p "claude"))
+    (should (equal (switchboard--harness-label "Claude" "claude")
+                   "Claude (needs installation)")))
+  (cl-letf (((symbol-function 'executable-find) (lambda (&rest _) "/bin/claude")))
+    (should-not (switchboard--harness-missing-p "claude"))
+    (should (equal (switchboard--harness-label "Claude" "claude") "Claude"))))
+
 (ert-deftest switchboard-test-unknown-session-is-ignored ()
   (switchboard-test--with-session s
     (switchboard-hook "nobody-0000" "Stop" nil)

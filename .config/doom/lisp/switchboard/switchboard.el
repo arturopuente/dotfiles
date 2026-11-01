@@ -756,6 +756,16 @@ of your own instead."
 (defun switchboard--read-project-option (&rest _)
   (abbreviate-file-name (switchboard--read-project)))
 
+(defun switchboard--harness-missing-p (program)
+  "Non-nil if PROGRAM, a harness's executable, can't be started."
+  (not (executable-find program)))
+
+(defun switchboard--harness-label (name program)
+  "NAME for the menu, saying so if PROGRAM isn't installed."
+  (if (switchboard--harness-missing-p program)
+      (format "%s (needs installation)" name)
+    name))
+
 (defun switchboard--new-with (harness)
   (let* ((args (transient-args 'switchboard-new))
          (scope (transient-scope 'switchboard-new))
@@ -796,9 +806,16 @@ of your own instead."
    ("-p" "First prompt" "--prompt=")
    ("-P" "Other project" "--project=" :reader switchboard--read-project-option)]
   ["Start"
-   ("c" "Claude" switchboard-new-claude)
-   ("x" "Codex" switchboard-new-codex)
-   ("p" "Pi" switchboard-new-pi)]
+   ;; Inapt, not just labelled: starting one makes its worktree first.
+   ("c" switchboard-new-claude
+    :description (lambda () (switchboard--harness-label "Claude" "claude"))
+    :inapt-if (lambda () (switchboard--harness-missing-p "claude")))
+   ("x" switchboard-new-codex
+    :description (lambda () (switchboard--harness-label "Codex" "codex"))
+    :inapt-if (lambda () (switchboard--harness-missing-p "codex")))
+   ("p" switchboard-new-pi
+    :description (lambda () (switchboard--harness-label "Pi" "pi"))
+    :inapt-if (lambda () (switchboard--harness-missing-p "pi")))]
   (interactive)
   (transient-setup 'switchboard-new nil nil :scope (switchboard--new-scope)))
 
