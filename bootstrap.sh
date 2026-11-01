@@ -103,6 +103,7 @@ link .config/git/ignore          .config/git/ignore
 link .config/ghostty/config      "Library/Application Support/com.mitchellh.ghostty/config"
 link vscode/settings.json        "Library/Application Support/Code/User/settings.json"
 link claude/settings.json        .claude/settings.json
+link claude/statusline-command.sh .claude/statusline-command.sh
 
 # 5. fish as login shell ----------------------------------------------------
 FISH=/opt/homebrew/bin/fish

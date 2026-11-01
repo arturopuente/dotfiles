@@ -8,5 +8,9 @@
   "theme": "light",
   "autoCompactEnabled": false,
   "copyOnSelect": false,
-  "skipWorkflowUsageWarning": true
+  "skipWorkflowUsageWarning": true,
+  "statusLine": {
+    "type": "command",
+    "command": "sh ~/.claude/statusline-command.sh"
+  }
 }
