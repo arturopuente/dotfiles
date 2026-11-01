@@ -114,6 +114,147 @@ recorded in `switchboard-test--notified'."
     (switchboard-test--hook "notify")
     (should (eq (switchboard-session-status s) 'ready))))
 
+;; Codex: its hooks, once trusted, and notify until then
+
+(defmacro switchboard-test--with-codex (var &rest body)
+  "Like `switchboard-test--with-session', for a Codex session."
+  (declare (indent 1))
+  `(switchboard-test--with-session ,var
+     (let ((switchboard--codex-hooked (make-hash-table :test 'equal)))
+       (setf (switchboard-session-harness ,var) 'codex)
+       ,@body)))
+
+(ert-deftest switchboard-test-codex-without-hooks-notify-gives-the-resume-id ()
+  (switchboard-test--with-codex s
+    (switchboard--set s 'working)
+    (switchboard-test--hook "notify" '((thread-id . "t1")))
+    (should (eq (switchboard-session-status s) 'ready))
+    (should (equal (switchboard-session-resume-id s) "t1"))))
+
+(ert-deftest switchboard-test-codex-notify-does-not-end-a-hooked-turn ()
+  ;; Stop found an agent still running; notify, right behind it, can't tell.
+  (switchboard-test--with-codex s
+    (switchboard-test--hook "SessionStart" '((session_id . "t1") (source . "startup")))
+    (switchboard-test--hook "SubagentStart" '((agent_id . "a1") (agent_type . "default")))
+    (switchboard-test--hook "Stop" '((session_id . "t1")))
+    (should (eq (switchboard-session-status s) 'agents))
+    (switchboard-test--hook "notify" '((thread-id . "t1")))
+    (should (eq (switchboard-session-status s) 'agents))))
+
+(ert-deftest switchboard-test-codex-return-means-working-only-without-hooks ()
+  (switchboard-test--with-codex s
+    (let ((switchboard--session s))
+      (switchboard--note-input 'return)
+      (should (eq (switchboard-session-status s) 'working))
+      (switchboard-test--hook "Stop" '((session_id . "t1")))
+      (should (eq (switchboard-session-status s) 'ready))
+      ;; Now UserPromptSubmit says so; RET may only have answered a menu.
+      (switchboard--note-input 'return)
+      (should (eq (switchboard-session-status s) 'ready)))))
+
+(ert-deftest switchboard-test-codex-interrupt-stops ()
+  (switchboard-test--with-codex s
+    (switchboard-test--hook "UserPromptSubmit" '((prompt . "go")))
+    (switchboard-test--hook "Interrupt" '((session_id . "t1")))
+    (should (eq (switchboard-session-status s) 'stopped))))
+
+;; The sequences below are as Codex 0.166 sent them, cut down.
+
+(ert-deftest switchboard-test-codex-background-agents-end-ready ()
+  (switchboard-test--with-codex s
+    (let ((spawn (lambda (task)
+                   (dolist (event '("PreToolUse" "PostToolUse"))
+                     (switchboard-test--hook
+                      event `((session_id . "t1") (tool_name . "collaborationspawn_agent")
+                              (tool_input . ((agent_type . :null) (task_name . ,task))))))))
+          (started (lambda (id)
+                     (switchboard-test--hook
+                      "SubagentStart" `((session_id . "t1") (agent_id . ,id) (agent_type . "default")))))
+          (stopped (lambda (id)
+                     (switchboard-test--hook
+                      "SubagentStop" `((session_id . "t1") (agent_id . ,id) (agent_type . "default"))))))
+      (switchboard-test--hook "SessionStart" '((session_id . "t1") (source . "startup")))
+      (switchboard-test--hook "UserPromptSubmit" '((session_id . "t1") (prompt . "go")))
+      (funcall spawn "sleep_a")
+      (funcall started "a1")
+      (funcall spawn "echo_b")
+      (switchboard-test--hook "PreToolUse" '((session_id . "t1") (agent_id . "a1")
+                                             (agent_type . "default") (tool_name . "Bash")))
+      (funcall started "a2")
+      (should (equal (mapcar #'switchboard-agent-description (switchboard-session-agents s))
+                     '("sleep a" "echo b")))
+      (should (equal (switchboard-agent-tool (car (switchboard-session-agents s))) "Bash"))
+      (should (equal (switchboard--agent-name (car (switchboard-session-agents s))) "general"))
+      (switchboard-test--hook "Stop" '((session_id . "t1")))
+      (should (eq (switchboard-session-status s) 'agents))
+      (funcall stopped "a2")
+      (should (eq (switchboard-session-status s) 'agents))
+      (funcall stopped "a1")
+      ;; No turn follows: Codex keeps their results for your next prompt.
+      (should (eq (switchboard-session-status s) 'ready))
+      (should (equal (car switchboard-test--notified) '("heron" . ready))))))
+
+(ert-deftest switchboard-test-codex-interrupt-leaves-agents-running ()
+  (switchboard-test--with-codex s
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "t1") (prompt . "go")))
+    (switchboard-test--hook "SubagentStart" '((session_id . "t1") (agent_id . "a1")
+                                              (agent_type . "default")))
+    (switchboard-test--hook "Interrupt" '((session_id . "t1")))
+    (should (eq (switchboard-session-status s) 'stopped))
+    (should (= (switchboard--live-agents s) 1))
+    (switchboard-test--hook "SubagentStop" '((session_id . "t1") (agent_id . "a1")
+                                             (agent_type . "default")))
+    (should (= (switchboard--live-agents s) 0))
+    (should (eq (switchboard-session-status s) 'stopped))))
+
+(ert-deftest switchboard-test-codex-permission-needs-you ()
+  (switchboard-test--with-codex s
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "t1") (prompt . "go")))
+    (switchboard-test--hook "PermissionRequest"
+                            '((session_id . "t1") (tool_name . "Bash")
+                              (tool_input . ((command . "curl example.com")))))
+    (should (eq (switchboard-session-status s) 'waiting))
+    (should (equal (switchboard-session-detail s) "Bash: curl example.com"))
+    (should (equal (car switchboard-test--notified) '("heron" . waiting)))))
+
+(ert-deftest switchboard-test-codex-hooks-trusted-mid-session-give-the-resume-id ()
+  (switchboard-test--with-codex s
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "t1") (prompt . "go")))
+    (should (equal (switchboard-session-resume-id s) "t1"))))
+
+(ert-deftest switchboard-test-codex-command ()
+  (switchboard-test--with-codex s
+    (let ((new (switchboard--command s "go" nil)))
+      (should (equal (seq-take new 2) '("codex" "--no-daemon")))
+      (should (equal (car (last new)) "go"))
+      (should (cl-some (lambda (a) (string-match-p "\\`hooks\\.Stop=.*codex-hook Stop" a)) new))
+      (should (cl-some (lambda (a) (string-prefix-p "notify=" a)) new)))
+    (should (equal (seq-take (switchboard--command s nil t) 3) '("codex" "resume" "--last")))
+    (setf (switchboard-session-resume-id s) "t1")
+    (should (equal (seq-take (switchboard--command s nil t) 3) '("codex" "resume" "t1")))))
+
+(ert-deftest switchboard-test-codex-tokens-and-title ()
+  ;; Records as Codex 0.166 writes them, cut down.
+  (switchboard-test--with-codex s
+    (let* ((home (make-temp-file "switchboard-codex" t))
+           (rollout (expand-file-name "rollout.jsonl" home))
+           (process-environment (cons (concat "CODEX_HOME=" home) process-environment)))
+      (with-temp-file rollout
+        (insert "{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"input_tokens\":14265}}}}\n"
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null}}\n"))
+      (with-temp-file (expand-file-name "session_index.jsonl" home)
+        (insert "{\"id\":\"t1\",\"thread_name\":\"Old\",\"updated_at\":\"x\"}\n"
+                "{\"id\":\"t2\",\"thread_name\":\"Other\",\"updated_at\":\"x\"}\n"
+                "{\"id\":\"t1\",\"thread_name\":\"Fix the parser\",\"updated_at\":\"x\"}\n"))
+      (unwind-protect
+          (progn
+            (switchboard-test--hook "SessionStart"
+                                    `((session_id . "t1") (source . "startup")
+                                      (transcript_path . ,rollout)))
+            (should (equal (switchboard-session-tokens s) 14265))
+            (should (equal (switchboard-session-title s) "Fix the parser")))
+        (delete-directory home t)))))
+
 (ert-deftest switchboard-test-unknown-session-is-ignored ()
   (switchboard-test--with-session s
     (switchboard-hook "nobody-0000" "Stop" nil)
