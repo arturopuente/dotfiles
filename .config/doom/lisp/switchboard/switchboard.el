@@ -976,7 +976,8 @@ Return non-nil if any were."
       (let ((agents (cl-remove-if (lambda (a) (and (switchboard-agent-end a)
                                                    (< (switchboard-agent-end a) cutoff)))
                                   (switchboard-session-agents s))))
-        (unless (equal agents (switchboard-session-agents s))
+        ;; `cl-remove-if' hands back the same list when it drops nothing.
+        (unless (eq agents (switchboard-session-agents s))
           (setf (switchboard-session-agents s) agents
                 pruned t))))
     pruned))
