@@ -662,5 +662,52 @@ recorded in `switchboard-test--notified'."
           (should (stringp (switchboard--agent-row a nil 400 pal))))
         (should (stringp (switchboard--agents-more-row (switchboard-session-agents s) 2 400 pal)))))))
 
+(defmacro switchboard-test--with-terminal-keys (&rest body)
+  "Run BODY with an empty terminal keymap, restoring the real one after."
+  (declare (indent 0))
+  `(let ((switchboard-terminal-mode-map (make-sparse-keymap))
+         (switchboard--terminal-bound nil))
+     ,@body))
+
+(ert-deftest switchboard-test-terminal-keys-bind-defaults ()
+  (switchboard-test--with-terminal-keys
+    (switchboard--bind-terminal-keys)
+    (should (eq (keymap-lookup switchboard-terminal-mode-map "S-<return>")
+                'ghostel--send-event))
+    (should (commandp (keymap-lookup switchboard-terminal-mode-map "M-<left>")))
+    (should-not (keymap-lookup switchboard-terminal-mode-map "C-g"))))
+
+(ert-deftest switchboard-test-terminal-keys-first-entry-wins ()
+  (switchboard-test--with-terminal-keys
+    (switchboard--bind-terminal-keys
+     (append '(("C-g" . send) ("s-v" . nil) ("M-<left>" . ignore))
+             switchboard-terminal-keys))
+    (should (eq (keymap-lookup switchboard-terminal-mode-map "C-g") 'ghostel--send-event))
+    (should-not (keymap-lookup switchboard-terminal-mode-map "s-v"))
+    (should (eq (keymap-lookup switchboard-terminal-mode-map "M-<left>") 'ignore))))
+
+(ert-deftest switchboard-test-terminal-keys-rebind-drops-old-keys ()
+  (switchboard-test--with-terminal-keys
+    (switchboard--bind-terminal-keys '(("C-g" . send) ("s-v" . paste)))
+    (switchboard--bind-terminal-keys '(("s-v" . paste)))
+    (should-not (keymap-lookup switchboard-terminal-mode-map "C-g"))
+    (should (keymap-lookup switchboard-terminal-mode-map "s-v"))))
+
+(ert-deftest switchboard-test-terminal-keys-send-strings-and-paste ()
+  (switchboard-test--with-terminal-keys
+    (let (sent pasted)
+      (cl-letf (((symbol-function 'ghostel-send-string) (lambda (s) (push s sent)))
+                ((symbol-function 'ghostel-paste-string) (lambda (s) (push s pasted)))
+                ((symbol-function 'switchboard--clipboard) (lambda () "clip")))
+        (switchboard--bind-terminal-keys '(("M-<left>" . "\eb") ("s-v" . paste)))
+        (call-interactively (keymap-lookup switchboard-terminal-mode-map "M-<left>"))
+        (call-interactively (keymap-lookup switchboard-terminal-mode-map "s-v"))
+        (should (equal sent '("\eb")))
+        (should (equal pasted '("clip")))))))
+
+(ert-deftest switchboard-test-terminal-keys-reject-bad-actions ()
+  (switchboard-test--with-terminal-keys
+    (should-error (switchboard--bind-terminal-keys '(("C-g" . 42))) :type 'user-error)))
+
 (provide 'switchboard-test)
 ;;; switchboard-test.el ends here

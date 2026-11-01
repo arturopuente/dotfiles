@@ -45,6 +45,8 @@
 (declare-function evil-set-initial-state "evil-core")
 (declare-function evil-define-key* "evil-core")
 (declare-function ghostel-send-C-c "ghostel")
+(declare-function ghostel-send-string "ghostel")
+(declare-function ghostel--send-event "ghostel")
 (defvar ghostel-kill-buffer-on-exit)
 (defvar ghostel-query-before-killing)
 (defvar ghostel-shell)
@@ -495,6 +497,112 @@ state C-c is the usual prefix (C-g gets there from insert state)."
 (with-eval-after-load 'evil
   (evil-define-key* 'insert switchboard-agent-mode-map (kbd "C-c") #'ghostel-send-C-c))
 
+;;;; Keys the terminal's program gets instead of Emacs
+
+(defvar-keymap switchboard-terminal-mode-map
+  :doc "Keys from `switchboard-terminal-keys'; see `switchboard-terminal-mode'.")
+
+(define-minor-mode switchboard-terminal-mode
+  "Send `switchboard-terminal-keys' to the program in this terminal.
+On in agent terminals and in their drawers (shell and the like)."
+  :keymap switchboard-terminal-mode-map
+  ;; Evil only sees a minor mode's state keys once it rebuilds its maps.
+  (when (fboundp 'evil-normalize-keymaps) (evil-normalize-keymaps)))
+
+(defvar switchboard-terminal-keys)     ; a defcustom below, whose :set binds them
+
+(defvar switchboard--terminal-bound nil
+  "Keys `switchboard--bind-terminal-keys' bound, as (KEY . EVIL-P), to undo.")
+
+(defun switchboard--clipboard ()
+  "The system clipboard's text, or the newest kill."
+  (or (ignore-errors (gui-get-selection 'CLIPBOARD 'UTF8_STRING))
+      (current-kill 0 t)))
+
+(defun switchboard--terminal-command (action)
+  "The command that does ACTION, from a `switchboard-terminal-keys' entry."
+  (pcase action
+    ('send #'ghostel--send-event)
+    ('paste (lambda () (interactive) (ghostel-paste-string (switchboard--clipboard))))
+    ((pred stringp) (lambda () (interactive) (ghostel-send-string action)))
+    ((pred commandp) action)
+    (_ (user-error "switchboard-terminal-keys: can't send %S" action))))
+
+(defun switchboard--bind-terminal-keys (&optional keys)
+  "Bind KEYS (default `switchboard-terminal-keys') in the terminal map.
+With evil, they go in insert state only, so normal state keeps Emacs's
+keys. Rebinding first unbinds what the last call bound."
+  (pcase-dolist (`(,key . ,evil) switchboard--terminal-bound)
+    (if evil
+        (evil-define-key* 'insert switchboard-terminal-mode-map key nil)
+      (keymap-unset switchboard-terminal-mode-map key t)))
+  (setq switchboard--terminal-bound nil)
+  (let ((evil (featurep 'evil)) seen)
+    (pcase-dolist (`(,key . ,action) (or keys switchboard-terminal-keys))
+      ;; The first entry for a key wins, so a prepended entry overrides
+      ;; a default, and (KEY . nil) leaves KEY to Emacs.
+      (unless (member key seen)
+        (push key seen)
+        (when action
+          (let ((cmd (switchboard--terminal-command action)))
+            (if evil
+                (evil-define-key* 'insert switchboard-terminal-mode-map (kbd key) cmd)
+              (keymap-set switchboard-terminal-mode-map key cmd))
+            (push (cons (if evil (kbd key) key) evil) switchboard--terminal-bound))))))
+  (when (fboundp 'evil-normalize-keymaps)
+    (dolist (b (buffer-list))
+      (when (buffer-local-value 'switchboard-terminal-mode b)
+        (with-current-buffer b (evil-normalize-keymaps))))))
+
+(defcustom switchboard-terminal-keys
+  '(;; Doom/evil bind these in insert state, which outranks ghostel's own
+    ;; keymap, so they edited the read-only buffer or moved Emacs's
+    ;; cursor instead of reaching the program.  Like Ghostty:
+    ("S-<return>"    . send)           ; newline in Claude Code's prompt
+    ("M-<backspace>" . send)           ; delete a word back
+    ("M-DEL"         . send)
+    ("M-<delete>"    . "\ed")          ; delete a word forward
+    ("s-<backspace>" . "\C-u")         ; delete to line start
+    ("M-<left>"      . "\eb")          ; word back
+    ("M-<right>"     . "\ef")          ; word forward
+    ("s-<left>"      . "\C-a")         ; line start
+    ("s-<right>"     . "\C-e")         ; line end
+    ("S-<left>"      . send)
+    ("S-<right>"     . send)
+    ("C-_"           . "\C-_")         ; undo in Claude Code's prompt
+    ("s-z"           . "\C-_")
+    ("s-v"           . paste))
+  "Keys a Switchboard terminal sends to its program instead of Emacs.
+Each entry is (KEY . ACTION). KEY is a `kbd' string. ACTION is:
+
+  send     the key itself, as ghostel encodes it (S-<return> is CSI 13;2u)
+  paste    the system clipboard, as a bracketed paste
+  STRING   these characters, e.g. \"\\eb\" for M-b
+  COMMAND  a command to run
+  nil      nothing: KEY stays Emacs's
+
+The first entry for a key wins, so to change or drop a default, put
+your entry first:
+
+  (setopt switchboard-terminal-keys
+          (append \\='((\"C-g\" . send) (\"s-v\" . nil))
+                  switchboard-terminal-keys))
+
+With evil the keys apply in insert state only. Setting this with
+`setopt' or Customize rebinds them at once."
+  :type '(alist :key-type (string :tag "Key")
+                :value-type (choice (const :tag "Send the key" send)
+                                    (const :tag "Paste the clipboard" paste)
+                                    (string :tag "Send characters")
+                                    (function :tag "Run a command")
+                                    (const :tag "Leave to Emacs" nil)))
+  :set (lambda (sym val)
+         (set-default-toplevel-value sym val)
+         (switchboard--bind-terminal-keys val)))
+
+;; Evil loaded after Switchboard: move the keys into insert state.
+(with-eval-after-load 'evil (switchboard--bind-terminal-keys))
+
 (defun switchboard--spawn (s &optional prompt resume)
   "Run S's harness in its buffer, creating the buffer if needed."
   (require 'ghostel)
@@ -528,7 +636,8 @@ state C-c is the usual prefix (C-g gets there from insert state)."
                   ;; it to full-screen apps, and Claude Code isn't one, so ESC
                   ;; switched evil to normal state instead.  C-c C-r toggles back.
                   evil-ghostel--escape-mode 'terminal)
-      (switchboard-agent-mode))
+      (switchboard-agent-mode)
+      (switchboard-terminal-mode))
     (switchboard--schedule-render)
     (when prompt
       (setf (switchboard-session-task s) prompt)
@@ -2345,7 +2454,9 @@ touch the agent's status.")
              (cl-remove-if (lambda (v) (string-match-p switchboard--inherited-env v))
                            process-environment)))
         (ghostel-exec buf program args))
-      (with-current-buffer buf (setq-local switchboard--drawer-of s)))
+      (with-current-buffer buf
+        (setq-local switchboard--drawer-of s)
+        (switchboard-terminal-mode)))
     buf))
 
 (defun switchboard--follow-drawer (s)

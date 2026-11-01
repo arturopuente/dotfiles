@@ -366,36 +366,10 @@ This command does not push text to `kill-ring'."
 ;; underlines by default. In a terminal that's noise, not a hint.
 (setq-hook! 'ghostel-mode-hook nobreak-char-display nil)
 
-;; Doom binds M-<backspace> (backward-kill-word) and s-<backspace> (kill to
-;; bol) in insert state, which outranks ghostel's keymap, so they edited the
-;; Emacs buffer instead of reaching the program. Send them on like Ghostty:
-;; Alt-Backspace deletes a word, Cmd-Backspace sends C-u to kill the line.
-;; S-<return> is Doom's newline too ("Buffer is read-only"); sent on, ghostel
-;; encodes it as CSI 13;2u, which Claude Code reads as a newline in the prompt.
-;; Alt/Cmd-arrows moved Emacs's cursor, not the program's. Like Ghostty, Alt
-;; sends M-b/M-f (word) and Cmd sends C-a/C-e (line start/end).
-;; Cmd-V (simpleclip) and C-_/Cmd-Z (undo) tried to edit the read-only buffer:
-;; paste goes to the program as a paste, and both undos send C-_, which is
-;; undo in Claude Code's prompt. Alt-Delete deletes the next word.
 (after! ghostel
   ;; ghostel defaults to $SHELL, which the envvar file pins to whatever shell
   ;; ran `doom sync' (it once captured zsh). Terminals get the login shell.
-  (setq ghostel-shell (or (executable-find "fish") ghostel-shell))
-  (map! :map ghostel-mode-map
-        :i "M-<backspace>" #'ghostel--send-event
-        :i "M-DEL"         #'ghostel--send-event
-        :i "S-<return>"    #'ghostel--send-event
-        :i "s-<backspace>" (cmd! (ghostel-send-string "\C-u"))
-        :i "M-<left>"      (cmd! (ghostel-send-string "\eb"))
-        :i "M-<right>"     (cmd! (ghostel-send-string "\ef"))
-        :i "s-<left>"      (cmd! (ghostel-send-string "\C-a"))
-        :i "s-<right>"     (cmd! (ghostel-send-string "\C-e"))
-        :i "M-<delete>"    (cmd! (ghostel-send-string "\ed"))
-        :i "S-<left>"      #'ghostel--send-event
-        :i "S-<right>"     #'ghostel--send-event
-        :i "C-_"           (cmd! (ghostel-send-string "\C-_"))
-        :i "s-z"           (cmd! (ghostel-send-string "\C-_"))
-        :i "s-v"           (cmd! (ghostel-paste-string (simpleclip-get-contents)))))
+  (setq ghostel-shell (or (executable-find "fish") ghostel-shell)))
 
 ;; Terminals look like Ghostty: its Monokai Pro Light Sun colors, and its
 ;; 22px rows for Berkeley Mono 18, where Emacs gives 21. These are ghostel's
