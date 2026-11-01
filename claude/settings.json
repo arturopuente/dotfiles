@@ -5,7 +5,7 @@
     "sessionUrl": false
   },
   "tui": "default",
-  "theme": "light",
+  "theme": "auto",
   "autoCompactEnabled": false,
   "copyOnSelect": false,
   "skipWorkflowUsageWarning": true,

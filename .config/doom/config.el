@@ -369,26 +369,46 @@ This command does not push text to `kill-ring'."
 (after! ghostel
   ;; ghostel defaults to $SHELL, which the envvar file pins to whatever shell
   ;; ran `doom sync' (it once captured zsh). Terminals get the login shell.
-  (setq ghostel-shell (or (executable-find "fish") ghostel-shell)))
+  (setq ghostel-shell (or (executable-find "fish") ghostel-shell))
+  ;; ghostel sends F1-F12 to the program; F5 toggles the theme everywhere.
+  (setopt ghostel-keymap-exceptions (cons "<f5>" ghostel-keymap-exceptions)))
 
-;; Terminals look like Ghostty: its Monokai Pro Light Sun colors, and its
-;; 22px rows for Berkeley Mono 18, where Emacs gives 21. These are ghostel's
-;; own faces, so the rest of Emacs keeps its theme.
+;; Terminals look like Ghostty: its Monokai Pro colors (Light Sun under a light
+;; theme, Monokai Pro under a dark one), and its 22px rows for Berkeley Mono 18,
+;; where Emacs gives 21. These are ghostel's own faces, so the rest of Emacs
+;; keeps its theme.
 (setq-hook! 'ghostel-mode-hook line-spacing 1)
 ;; Fringes in the terminal's color, not the theme's grey strip at its edges.
 (add-hook 'ghostel-mode-hook (lambda () (face-remap-add-relative 'fringe 'ghostel-default)))
+
+(defconst +ghostel-palettes
+  ;; (FG BG . ANSI COLORS); bright-X is X in both, as in Ghostty's themes.
+  '((light "#2c232e" "#f8efe7"
+           (black . "#f8efe7") (red . "#ce4770") (green . "#218871") (yellow . "#b16803")
+           (blue . "#d4572b") (magenta . "#6851a2") (cyan . "#2473b6") (white . "#2c232e")
+           (bright-black . "#a59c9c"))
+    (dark "#fcfcfa" "#2d2a2e"
+          (black . "#403e41") (red . "#ff6188") (green . "#a9dc76") (yellow . "#ffd866")
+          (blue . "#fc9867") (magenta . "#ab9df2") (cyan . "#78dce8") (white . "#fcfcfa")
+          (bright-black . "#727072")))
+  "Ghostty's Monokai Pro Light Sun and Monokai Pro, for ghostel.")
+
+(defun +ghostel-match-theme-h (&rest _)
+  "Color ghostel's faces for the current theme's background."
+  (pcase-let* ((mode (if (color-dark-p (color-name-to-rgb (face-background 'default nil t)))
+                         'dark 'light))
+               (`(,fg ,bg . ,colors) (alist-get mode +ghostel-palettes)))
+    (set-face-attribute 'ghostel-default nil :foreground fg :background bg)
+    (pcase-dolist (`(,name . ,color) colors)
+      (set-face-attribute (intern (format "ghostel-color-%s" name)) nil :foreground color)
+      (unless (eq name 'bright-black)
+        (set-face-attribute (intern (format "ghostel-color-bright-%s" name)) nil
+                            :foreground color)))))
+
 (after! ghostel
-  (set-face-attribute 'ghostel-default nil :foreground "#2c232e" :background "#f8efe7")
-  (cl-loop for (face . color)
-           in '((black . "#f8efe7") (red . "#ce4770") (green . "#218871")
-                (yellow . "#b16803") (blue . "#d4572b") (magenta . "#6851a2")
-                (cyan . "#2473b6") (white . "#2c232e") (bright-black . "#a59c9c")
-                (bright-red . "#ce4770") (bright-green . "#218871")
-                (bright-yellow . "#b16803") (bright-blue . "#d4572b")
-                (bright-magenta . "#6851a2") (bright-cyan . "#2473b6")
-                (bright-white . "#2c232e"))
-           do (set-face-attribute (intern (format "ghostel-color-%s" face)) nil
-                                  :foreground color)))
+  (+ghostel-match-theme-h)
+  ;; Before ghostel's own hook, which pushes these faces to open terminals.
+  (add-hook 'enable-theme-functions #'+ghostel-match-theme-h -50))
 
 (map! :leader
       (:prefix ("e" . "agents")

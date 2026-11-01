@@ -2273,6 +2273,13 @@ They carry no `switchboard-session', so moving by rows passes over them."
   (unless switchboard--render-timer
     (setq switchboard--render-timer (run-at-time 0.05 nil #'switchboard--render))))
 
+(defun switchboard--on-theme-change (&rest _)
+  "Redraw in the new theme's colors; the images take them from its faces."
+  (when (get-buffer switchboard--buffer-name)
+    (switchboard--schedule-render)))
+
+(add-hook 'enable-theme-functions #'switchboard--on-theme-change)
+
 (defun switchboard--tick ()
   "Redraw for the spinner and ages while the list is on screen."
   (if (get-buffer-window switchboard--buffer-name t)
