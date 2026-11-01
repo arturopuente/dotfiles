@@ -16,13 +16,15 @@
 ;;
 ;; Most of that comes from the harness itself. Claude Code sessions get
 ;; hooks through `--settings' (so only Switchboard sessions report), Codex
-;; gets a `notify' program, and both call switchboard-hook.sh, which calls
-;; `switchboard-hook' through emacsclient. Two states have no event and
-;; are inferred from the keys you send: ESC means STOPPED, and RET in a
-;; Codex session means WORKING (Codex only reports when a turn ends).
+;; gets a `notify' program, Pi loads switchboard-pi.ts with `-e', and all
+;; of them call switchboard-hook.sh, which calls `switchboard-hook'
+;; through emacsclient. Pi's extension sends Claude Code's event names.
+;; Two states have no event and are inferred from the keys you send: ESC
+;; means STOPPED, and RET in a Codex session means WORKING (Codex only
+;; reports when a turn ends).
 ;;
-;; Subagents a Claude session starts are listed under it, with the tool
-;; each is running, for the session on screen and any with an agent that
+;; Subagents a Claude session starts, or a Pi session through
+;; pi-subagents, are listed under it, with the tool each is running, for the session on screen and any with an agent that
 ;; needs you; other rows show them as a bar, one segment per agent.
 ;;
 ;; Entry point: M-x switchboard.
@@ -91,7 +93,11 @@ nil notifies once."
 (defconst switchboard--hook-script
   (expand-file-name "switchboard-hook.sh"
                     (file-name-directory (or load-file-name buffer-file-name)))
-  "The script Claude Code hooks and Codex notify call.")
+  "The script Claude Code hooks, Codex notify and Pi's extension call.")
+
+(defconst switchboard--pi-extension
+  (expand-file-name "switchboard-pi.ts" (file-name-directory switchboard--hook-script))
+  "The extension Pi sessions load to report their events.")
 
 (defconst switchboard--buffer-name "*switchboard*")
 
@@ -490,7 +496,15 @@ SWITCHBOARD_ID it took with it from S's terminal."
              (and resume (list "resume" "--last"))
              (list "-c" (format "notify=[\"/bin/sh\", %S, \"codex\"]"
                                 switchboard--hook-script))
-             (and prompt (list prompt))))))
+             (and prompt (list prompt))))
+    ('pi
+     ;; Pi reports its session's id on SessionStart.  `--' keeps a prompt
+     ;; that starts with - a prompt.
+     (append (list "pi" "-e" switchboard--pi-extension)
+             (cond ((and resume (switchboard-session-resume-id s))
+                    (list "--session-id" (switchboard-session-resume-id s)))
+                   (resume (list "--continue")))
+             (and prompt (list "--" prompt))))))
 
 (defconst switchboard--inherited-env
   (rx bos (or "CLAUDECODE" "CLAUDE_PID" "CLAUDE_EFFORT" "AI_AGENT"
@@ -730,6 +744,11 @@ of your own instead."
   (interactive)
   (switchboard--new-with 'codex))
 
+(transient-define-suffix switchboard-new-pi ()
+  "Start a Pi session."
+  (interactive)
+  (switchboard--new-with 'pi))
+
 ;;;###autoload (autoload 'switchboard-new "switchboard" nil t)
 (transient-define-prefix switchboard-new ()
   "Start a new session, in the project and folder of the row at point."
@@ -742,7 +761,8 @@ of your own instead."
    ("-P" "Other project" "--project=" :reader switchboard--read-project-option)]
   ["Start"
    ("c" "Claude" switchboard-new-claude)
-   ("x" "Codex" switchboard-new-codex)]
+   ("x" "Codex" switchboard-new-codex)
+   ("p" "Pi" switchboard-new-pi)]
   (interactive)
   (transient-setup 'switchboard-new nil nil :scope (switchboard--new-scope)))
 
@@ -799,10 +819,13 @@ of your own instead."
   "Refresh S's token count and, unless you named it, its title."
   (when-let* ((path (alist-get 'transcript_path payload)))
     (setf (switchboard-session-transcript s) path))
-  (when-let* ((tokens (switchboard--context-tokens (switchboard-session-transcript s))))
+  ;; Pi's extension sends both; Claude Code's are in its transcript.
+  (when-let* ((tokens (or (alist-get 'tokens payload)
+                          (switchboard--context-tokens (switchboard-session-transcript s)))))
     (setf (switchboard-session-tokens s) tokens))
   (unless (switchboard-session-named s)
-    (let ((title (switchboard--ai-title (switchboard-session-transcript s))))
+    (let ((title (or (alist-get 'title payload)
+                     (switchboard--ai-title (switchboard-session-transcript s)))))
       (when (and title (not (equal title (switchboard-session-title s))))
         (setf (switchboard-session-title s) title)
         (switchboard--rename-buffer s)
@@ -1131,8 +1154,9 @@ Called by switchboard-hook.sh through emacsclient."
       (switchboard--note-cwd s (alist-get 'cwd payload))
       (pcase event
         ("SessionStart"
-         ;; Compacting keeps the conversation and its background agents.
-         (unless (equal (alist-get 'source payload) "compact")
+         ;; Compacting keeps the conversation and its background agents,
+         ;; and so does Pi reloading its extensions.
+         (unless (member (alist-get 'source payload) '("compact" "reload"))
            (switchboard--clear-agents s))
          (setf (switchboard-session-resume-id s) (alist-get 'session_id payload))
          (switchboard--update-git s)
@@ -1176,7 +1200,13 @@ Called by switchboard-hook.sh through emacsclient."
                    what)))
          (switchboard--set s 'waiting))
         ("SubagentStart"
-         (switchboard--agent s agent-id (alist-get 'agent_type payload))
+         (let ((a (switchboard--agent s agent-id (alist-get 'agent_type payload))))
+           ;; Pi's extension says what it's for; Claude Code's Agent call did.
+           (when-let* ((desc (alist-get 'description payload)))
+             (unless (switchboard-agent-description a)
+               (setq a (switchboard--change-agent s a :description desc))))
+           (when (alist-get 'background payload)
+             (switchboard--change-agent s a :background t)))
          (switchboard--schedule-render))
         ("SubagentStop"
          (switchboard--end-agents s (lambda (a) (equal (switchboard-agent-id a) agent-id)))
@@ -1200,6 +1230,12 @@ Called by switchboard-hook.sh through emacsclient."
                             (alist-get 'message payload))))
                  (if (stringp e) e "API error")))
          (switchboard--finish-turn s 'error))
+        ("Aborted"                      ; Pi: you interrupted it
+         (when (memq (switchboard-session-status s) '(working waiting))
+           (switchboard--stop-turn s)))
+        ("SessionInfo"                  ; Pi: its name changed
+         (switchboard--update-tokens s payload)
+         (switchboard--schedule-render))
         ("notify"                       ; Codex: a turn finished
          (setf (switchboard-session-detail s) nil)
          (switchboard--finish-turn s 'ready)))))
@@ -1215,13 +1251,16 @@ Called by switchboard-hook.sh through emacsclient."
   ;; Ctrl-C interrupts a turn just like ESC.
   (switchboard--note-input (pcase string ((or "\e" "\x03") 'escape) ("\r" 'return))))
 
+(defun switchboard--stop-turn (s)
+  "You interrupted S's turn, which takes its foreground agents with it."
+  (switchboard--end-agents s (lambda (a) (not (switchboard-agent-background a))))
+  (switchboard--set s 'stopped))
+
 (defun switchboard--note-input (key)
   (when-let* ((s switchboard--session))
     (let ((status (switchboard-session-status s)))
       (cond ((and (eq key 'escape) (memq status '(working waiting)))
-             ;; Interrupting takes the foreground agents with it.
-             (switchboard--end-agents s (lambda (a) (not (switchboard-agent-background a))))
-             (switchboard--set s 'stopped))
+             (switchboard--stop-turn s))
             ((and (eq key 'return) (eq (switchboard-session-harness s) 'codex)
                   (memq status '(ready stopped error)))
              (switchboard--set s 'working))))))
@@ -1540,7 +1579,8 @@ merged, \" | \" and MERGED too."
         :dim (switchboard--color 'shadow)
         :blue (switchboard--color 'switchboard-working)
         :claude (switchboard--color 'font-lock-builtin-face)
-        :codex (switchboard--color 'font-lock-constant-face)))
+        :codex (switchboard--color 'font-lock-constant-face)
+        :pi (switchboard--color 'font-lock-keyword-face)))
 
 (defun switchboard--text-width (string size)
   "Width of STRING at SIZE pixels, assuming a monospaced font."
@@ -1699,14 +1739,15 @@ or `closed'."
        (_ (plist-get pal :dim))))))
 
 (defun switchboard--draw-badge (svg s x y size pal)
-  "The cc/cx tag with its left edge at X; return its width."
-  (let* ((claude (eq (switchboard-session-harness s) 'claude))
-         (color (plist-get pal (if claude :claude :codex)))
+  "The cc/cx/pi tag with its left edge at X; return its width."
+  (let* ((harness (switchboard-session-harness s))
+         (color (plist-get pal (intern (format ":%s" harness))))
          (w (+ 8 (switchboard--text-width "cc" size)))
          (h (round (* 1.35 size))))
     (svg-rectangle svg (+ x 0.5) (+ (- y h) 0.5 (* 0.28 size)) (- w 1) (- h 1)
                    :rx 3 :fill "none" :stroke color :stroke-width 1)
-    (switchboard--svg-text svg (if claude "cc" "cx") (+ x (/ w 2.0)) y size color
+    (switchboard--svg-text svg (pcase harness ('claude "cc") ('codex "cx") (_ "pi"))
+                           (+ x (/ w 2.0)) y size color
                            :text-anchor "middle")
     w))
 

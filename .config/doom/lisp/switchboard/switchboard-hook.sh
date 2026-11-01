@@ -1,8 +1,9 @@
 #!/bin/sh
-# Reports Claude Code and Codex events to Switchboard in Emacs.
+# Reports Claude Code, Codex and Pi events to Switchboard in Emacs.
 #
 #   Claude Code hook:  switchboard-hook.sh claude <Event>      (payload JSON on stdin)
 #   Codex notify:      switchboard-hook.sh codex <payload-json>
+#   Pi extension:      switchboard-hook.sh pi <Event>          (payload JSON on stdin)
 #
 # Switchboard sets SWITCHBOARD_ID (and the server socket) in each session's
 # environment; anything started outside Switchboard is ignored. Payloads go
@@ -37,6 +38,10 @@ case "$1" in
       *)
         cat > /dev/null; payload= ;;
     esac ;;
+  pi)
+    # switchboard-pi.ts sends Claude Code's event names, already cut down.
+    event=$2
+    payload=$(mktemp -t switchboard) && cat > "$payload" ;;
   codex)
     event=notify
     payload=$(mktemp -t switchboard) && printf '%s' "$2" > "$payload" ;;

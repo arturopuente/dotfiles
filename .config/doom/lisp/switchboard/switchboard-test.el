@@ -1,7 +1,7 @@
 ;;; switchboard-test.el --- Tests for Switchboard's hook handling -*- lexical-binding: t; -*-
 
 ;; Run with ./test.sh, which puts Doom's packages on the load path.
-;; These feed `switchboard-hook' the events Claude Code and Codex send and
+;; These feed `switchboard-hook' the events Claude Code, Codex and Pi send and
 ;; check the state a session ends up in, without a terminal or a real agent.
 
 ;;; Code:
@@ -665,6 +665,118 @@ recorded in `switchboard-test--notified'."
     (switchboard--bind-terminal-keys '(("s-v" . paste)))
     (should-not (keymap-lookup switchboard-terminal-mode-map "C-g"))
     (should (keymap-lookup switchboard-terminal-mode-map "s-v"))))
+
+;;; Pi
+
+;; These replay what switchboard-pi.ts sent from a real Pi run (against a
+;; scripted model), cut down to the fields that matter.
+
+(defmacro switchboard-test--with-pi-session (var &rest body)
+  "Like `switchboard-test--with-session', for a Pi session that has started."
+  (declare (indent 1))
+  `(switchboard-test--with-session ,var
+     (setf (switchboard-session-harness ,var) 'pi)
+     (cl-letf (((symbol-function 'switchboard--update-git) #'ignore)
+               ((symbol-function 'switchboard--update-git-soon) #'ignore))
+       (switchboard-test--hook "SessionStart" '((session_id . "01a197b5") (source . "startup")
+                                                (tokens . 0)))
+       ,@body)))
+
+(ert-deftest switchboard-test-pi-command ()
+  (switchboard-test--with-session s
+    (setf (switchboard-session-harness s) 'pi)
+    (should (equal (switchboard--command s "-x first")
+                   (list "pi" "-e" switchboard--pi-extension "--" "-x first")))
+    (should (equal (switchboard--command s nil t)
+                   (list "pi" "-e" switchboard--pi-extension "--continue")))
+    (setf (switchboard-session-resume-id s) "01a197b5")
+    (should (equal (switchboard--command s nil t)
+                   (list "pi" "-e" switchboard--pi-extension "--session-id" "01a197b5")))))
+
+(ert-deftest switchboard-test-pi-turn ()
+  (switchboard-test--with-pi-session s
+    (should (equal (switchboard-session-resume-id s) "01a197b5"))
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "01a197b5") (prompt . "fix it")
+                                                 (tokens . 0)))
+    (should (eq (switchboard-session-status s) 'working))
+    (should (equal (switchboard-session-task s) "fix it"))
+    (switchboard-test--hook "PreToolUse" '((session_id . "01a197b5") (tool_name . "bash")))
+    (switchboard-test--hook "PostToolUse" '((session_id . "01a197b5") (tool_name . "bash")))
+    (switchboard-test--hook "Stop" '((session_id . "01a197b5") (tokens . 1239)))
+    (should (eq (switchboard-session-status s) 'ready))
+    (should (= (switchboard-session-tokens s) 1239))))
+
+(ert-deftest switchboard-test-pi-error-and-abort ()
+  (switchboard-test--with-pi-session s
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "01a197b5") (prompt . "go")))
+    (switchboard-test--hook "StopFailure" '((session_id . "01a197b5") (error . "400: scripted")))
+    (should (eq (switchboard-session-status s) 'error))
+    (should (equal (switchboard-session-detail s) "400: scripted"))
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "01a197b5") (prompt . "again")))
+    (switchboard-test--hook "Aborted" '((session_id . "01a197b5")))
+    (should (eq (switchboard-session-status s) 'stopped))
+    ;; ESC already stopped it: the Aborted that follows changes nothing.
+    (switchboard-test--hook "Aborted" '((session_id . "01a197b5")))
+    (should (eq (switchboard-session-status s) 'stopped))))
+
+(ert-deftest switchboard-test-pi-prompt-needs-you ()
+  (switchboard-test--with-pi-session s
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "01a197b5") (prompt . "go")))
+    (switchboard-test--hook "PreToolUse" '((session_id . "01a197b5") (tool_name . "bash")))
+    (switchboard-test--hook "PermissionRequest"
+                            '((session_id . "01a197b5") (tool_name . "bash")
+                              (tool_input . ((command . "rm -rf junk")))))
+    (should (eq (switchboard-session-status s) 'waiting))
+    (should (equal (switchboard-session-detail s) "bash: rm -rf junk"))
+    (switchboard-test--hook "PreToolUse" '((session_id . "01a197b5") (tool_name . "bash")))
+    (should (eq (switchboard-session-status s) 'working))
+    (should-not (switchboard-session-detail s))))
+
+(ert-deftest switchboard-test-pi-title-from-its-name ()
+  (switchboard-test--with-pi-session s
+    (switchboard-test--hook "SessionInfo" '((session_id . "01a197b5") (title . "Fix the hook")))
+    (should (equal (switchboard-session-title s) "Fix the hook"))))
+
+(ert-deftest switchboard-test-pi-foreground-subagent ()
+  (switchboard-test--with-pi-session s
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "01a197b5") (prompt . "go")))
+    (switchboard-test--hook "PreToolUse" '((session_id . "01a197b5") (tool_name . "subagent")))
+    (switchboard-test--hook "SubagentStart" '((session_id . "01a197b5") (agent_id . "r1:0")
+                                              (agent_type . "scout")
+                                              (description . "CHILD look around")))
+    (switchboard-test--hook "PreToolUse" '((session_id . "01a197b5") (agent_id . "r1:0")
+                                           (agent_type . "scout") (tool_name . "bash")))
+    (let ((a (switchboard-test--agent s "r1:0")))
+      (should (equal (switchboard-agent-description a) "CHILD look around"))
+      (should (equal (switchboard-agent-tool a) "bash"))
+      (should-not (switchboard-agent-background a)))
+    (switchboard-test--hook "SubagentStop" '((session_id . "01a197b5") (agent_id . "r1:0")))
+    (switchboard-test--hook "PostToolUse" '((session_id . "01a197b5") (tool_name . "subagent")))
+    (switchboard-test--hook "Stop" '((session_id . "01a197b5") (tokens . 1239)))
+    (should (eq (switchboard-agent-status (switchboard-test--agent s "r1:0")) 'done))
+    (should (eq (switchboard-session-status s) 'ready))))
+
+(ert-deftest switchboard-test-pi-background-subagent ()
+  (switchboard-test--with-pi-session s
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "01a197b5") (prompt . "go")))
+    (switchboard-test--hook "SubagentStart" '((session_id . "01a197b5") (agent_id . "bg1")
+                                              (agent_type . "scout")
+                                              (description . "CHILD look around")
+                                              (background . t)))
+    (switchboard-test--hook "Stop" '((session_id . "01a197b5")))
+    (should (eq (switchboard-session-status s) 'agents))
+    (should (equal (switchboard--label s) "WAITING ON 1 AGENT"))
+    ;; Reloading Pi's extensions keeps it; its completion wakes a turn,
+    ;; which pi-subagents starts before it reports the child done.
+    (switchboard-test--hook "SessionStart" '((session_id . "01a197b5") (source . "reload")))
+    (should (switchboard-test--agent s "bg1"))
+    (switchboard-test--hook "UserPromptSubmit" '((session_id . "01a197b5")))
+    (should (eq (switchboard-session-status s) 'working))
+    (should (equal (switchboard-session-task s) "go"))
+    (switchboard-test--hook "SubagentStop" '((session_id . "01a197b5") (agent_id . "bg1")))
+    (switchboard-test--hook "Stop" '((session_id . "01a197b5")))
+    (should (eq (switchboard-agent-status (switchboard-test--agent s "bg1")) 'done))
+    (should (eq (switchboard-session-status s) 'ready))))
 
 (provide 'switchboard-test)
 ;;; switchboard-test.el ends here

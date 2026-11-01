@@ -334,7 +334,7 @@ This command does not push text to `kill-ring'."
 ;;
 ;;; Agents
 ;;
-;; Switchboard (lisp/switchboard): Claude Code / Codex sessions in ghostel
+;; Switchboard (lisp/switchboard): Claude Code / Codex / Pi sessions in ghostel
 ;; terminals, listed in a left side window with their state. SPC e was free.
 
 (add-load-path! "lisp/switchboard")
