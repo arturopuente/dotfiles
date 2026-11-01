@@ -11,6 +11,7 @@
   "skipWorkflowUsageWarning": true,
   "statusLine": {
     "type": "command",
-    "command": "sh ~/.claude/statusline-command.sh"
+    "command": "sh ~/.claude/statusline-command.sh",
+    "refreshInterval": 60
   }
 }

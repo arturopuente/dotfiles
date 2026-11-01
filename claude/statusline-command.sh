@@ -7,6 +7,7 @@ ctx_tokens=$(echo "$input" | jq -r '.context_window.total_input_tokens // 0')
 transcript=$(echo "$input" | jq -r '.transcript_path // empty')
 # Subscription usage in the current 5-hour window; absent before the first response.
 five_h=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
+five_reset=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
 
 # Green under 50%, yellow from 50%, red from 80%.
 pct_color() {
@@ -33,7 +34,16 @@ fi
 five_part=""
 if [ -n "$five_h" ]; then
   five_int=$(printf "%.0f" "$five_h")
-  five_part=$(printf "  $(pct_color "$five_int")5h: %s%%\033[0m" "$five_int")
+  # From 50% on, add the time until the window resets: 1h40m or 12m.
+  reset_part=""
+  if [ -n "$five_reset" ] && [ "$five_int" -ge 50 ]; then
+    left=$(( ${five_reset%.*} - $(date +%s) ))
+    if [ "$left" -gt 0 ]; then
+      h=$((left / 3600)); m=$(((left % 3600) / 60))
+      if [ "$h" -gt 0 ]; then reset_part=" ${h}h${m}m"; else reset_part=" ${m}m"; fi
+    fi
+  fi
+  five_part=$(printf "  \033[36m5h: %s%%%s\033[0m" "$five_int" "$reset_part")
 fi
 
 tool_part=""
