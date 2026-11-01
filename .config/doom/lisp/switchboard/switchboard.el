@@ -254,7 +254,9 @@ resuming and worktree cleanup stay with `switchboard-session-dir'."
   (unless (eq status (switchboard-session-status s))
     (when (eq status 'working)
       (setf (switchboard-session-turn-start s) (float-time)
-            (switchboard-session-unread s) nil))
+            (switchboard-session-unread s) nil)
+      ;; Back at work: "Needs you" or "Finished" is out of date.
+      (switchboard--clear-notification s))
     (setf (switchboard-session-status s) status
           (switchboard-session-changed s) (float-time))
     (when (and (memq status '(waiting error)) (not (switchboard--watching-p s)))
@@ -339,6 +341,20 @@ can only post it."
     (when (executable-find "terminal-notifier")
       (start-process "switchboard-notify" nil "terminal-notifier"
                      "-remove" (switchboard--notification-group s)))))
+
+;;;###autoload
+(defun switchboard-clear-notifications ()
+  "Take every Switchboard notification out of Notification Center.
+Covers listed and recently closed sessions, including notifications
+from before Emacs last started."
+  (interactive)
+  (when-let* ((notifier (executable-find "terminal-notifier")))
+    (dolist (id (delete-dups
+                 (append (mapcar #'switchboard-session-id switchboard--sessions)
+                         (mapcar (lambda (e) (plist-get e :id)) switchboard--recent))))
+      (start-process "switchboard-notify" nil notifier
+                     "-remove" (concat "switchboard-" id))))
+  (setq switchboard--notified nil))
 
 (defun switchboard--notification-clicked (id)
   "Open session ID, with the sidebar on its row: a notification was clicked.
@@ -1319,6 +1335,10 @@ Return the ones added.  Sessions whose directory is gone are dropped."
                 (t (push s added)))))
       (setq added (nreverse added)
             switchboard--sessions (append switchboard--sessions added))
+      ;; Their notifications from the last run may still be up: opening
+      ;; one clears its own.
+      (dolist (s added)
+        (cl-pushnew (switchboard-session-id s) switchboard--notified :test #'equal))
       added)))
 
 ;;;###autoload
@@ -2762,6 +2782,7 @@ to remove that and its branch too; otherwise they're kept, for
         (let ((kill-buffer-query-functions nil)
               (ghostel-query-before-killing nil))
           (kill-buffer buf)))
+      (switchboard--clear-notification s)
       (setq switchboard--sessions (delq s switchboard--sessions))
       (switchboard--remember-closed s)
       (switchboard--save-soon)
