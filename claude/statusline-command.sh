@@ -1,13 +1,18 @@
 #!/bin/sh
 input=$(cat)
 
-used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
-# Tokens currently in the context window (input incl. cache) — same basis as used_percentage.
-ctx_tokens=$(echo "$input" | jq -r '.context_window.total_input_tokens // 0')
-transcript=$(echo "$input" | jq -r '.transcript_path // empty')
-# Subscription usage in the current 5-hour window; absent before the first response.
-five_h=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
-five_reset=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
+# One jq run for every field; @sh quotes each value, so the eval is safe.
+#   used         context used, %
+#   ctx_tokens   tokens currently in the context window (input incl. cache),
+#                the same basis as used_percentage
+#   five_h       subscription usage in the current 5-hour window, % (absent
+#                before the first response), and five_reset when it resets
+eval "$(echo "$input" | jq -r '@sh "
+  used=\(.context_window.used_percentage // "")
+  ctx_tokens=\(.context_window.total_input_tokens // 0)
+  transcript=\(.transcript_path // "")
+  five_h=\(.rate_limits.five_hour.used_percentage // "")
+  five_reset=\(.rate_limits.five_hour.resets_at // "")"')"
 
 # Green under 50%, yellow from 50%, red from 80%.
 pct_color() {
