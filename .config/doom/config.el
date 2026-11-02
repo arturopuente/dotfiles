@@ -355,14 +355,16 @@ This command does not push text to `kill-ring'."
   :commands (switchboard switchboard-new switchboard-toggle-focus
              switchboard-next-attention switchboard-hook
              switchboard-next-session switchboard-previous-session
-             switchboard-resume-all switchboard-shell switchboard-zoom))
+             switchboard-resume-all switchboard-shell switchboard-zoom
+             switchboard-maybe-open))
 
 ;; Started without a file or directory to open (from the Dock, say), Emacs
 ;; opens on the session list; saved sessions show as EXITED until resumed.
-(add-hook! 'window-setup-hook :append
-  (unless (or (not (file-directory-p +switchboard-dir))
-              (cl-some (lambda (arg) (not (string-prefix-p "-" arg))) (cdr command-line-args)))
-    (switchboard)))
+;; Loaded from a checkout, it gets no autoloads, so its startup hook is added
+;; here too.
+(setq switchboard-open-at-startup t)
+(when (file-directory-p +switchboard-dir)
+  (add-hook 'window-setup-hook #'switchboard-maybe-open 90))
 
 ;; Claude Code pads its ⎿ result lines with no-break spaces, which Emacs
 ;; underlines by default. In a terminal that's noise, not a hint.
