@@ -16,6 +16,9 @@ fi
 # 2. Repo -------------------------------------------------------------------
 # HTTPS so this works before an SSH key is set up on the new machine.
 [ -d "$DOTFILES" ] || git clone https://github.com/arturopuente/dotfiles.git "$DOTFILES"
+SWITCHBOARD="$HOME/dev/arturo/switchboard"
+[ -d "$SWITCHBOARD" ] || git clone https://github.com/arturopuente/switchboard.git "$SWITCHBOARD" ||
+  echo "!! Could not clone Switchboard; Doom will start without it."
 
 # 3. Packages ---------------------------------------------------------------
 brew bundle --file="$DOTFILES/Brewfile" || echo "!! Some Brewfile entries failed; see above."

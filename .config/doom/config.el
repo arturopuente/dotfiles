@@ -334,15 +334,16 @@ This command does not push text to `kill-ring'."
 ;;
 ;;; Agents
 ;;
-;; Switchboard (lisp/switchboard): Claude Code / Codex / Pi sessions in ghostel
+;; Switchboard (~/dev/arturo/switchboard): Claude Code / Codex / Pi sessions in ghostel
 ;; terminals, listed in a left side window with their state. SPC e was free.
 
-(add-load-path! "lisp/switchboard")
+(defconst +switchboard-dir (expand-file-name "~/dev/arturo/switchboard"))
+(add-to-list 'load-path +switchboard-dir)
 
 ;; Compiled, Switchboard's redraws are faster and allocate far less.  Not
 ;; through `switchboard--compile': it isn't loaded yet.  `load-prefer-newer'
 ;; is off, so a stale .elc would win over the .el.
-(let* ((el (expand-file-name "lisp/switchboard/switchboard.el" doom-user-dir))
+(let* ((el (expand-file-name "switchboard.el" +switchboard-dir))
        (elc (byte-compile-dest-file el)))
   (when (file-newer-than-file-p el elc)
     (let ((byte-compile-warnings nil)
@@ -359,7 +360,8 @@ This command does not push text to `kill-ring'."
 ;; Started without a file or directory to open (from the Dock, say), Emacs
 ;; opens on the session list; saved sessions show as EXITED until resumed.
 (add-hook! 'window-setup-hook :append
-  (unless (cl-some (lambda (arg) (not (string-prefix-p "-" arg))) (cdr command-line-args))
+  (unless (or (not (file-directory-p +switchboard-dir))
+              (cl-some (lambda (arg) (not (string-prefix-p "-" arg))) (cdr command-line-args)))
     (switchboard)))
 
 ;; Claude Code pads its ⎿ result lines with no-break spaces, which Emacs
