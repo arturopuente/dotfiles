@@ -911,6 +911,19 @@ recorded in `switchboard-test--notified'."
     (should-not (keymap-lookup switchboard-terminal-mode-map "C-g"))
     (should (keymap-lookup switchboard-terminal-mode-map "s-v"))))
 
+(ert-deftest switchboard-test-clipboard-skips-empty-answers ()
+  ;; Asks for the default type: on macOS, UTF8_STRING gets "".
+  (cl-letf (((symbol-function 'gui-get-selection)
+             (lambda (_selection &optional type) (if type "" "copied"))))
+    (should (equal (switchboard--clipboard) "copied")))
+  ;; Nothing on the clipboard: the newest kill.
+  (dolist (empty '("" nil))
+    (cl-letf (((symbol-function 'gui-get-selection) (lambda (&rest _) empty))
+              (kill-ring '("killed"))
+              (kill-ring-yank-pointer '("killed"))
+              (interprogram-paste-function nil))
+      (should (equal (switchboard--clipboard) "killed")))))
+
 ;;; Pi
 
 ;; These replay what switchboard-pi.ts sent from a real Pi run (against a

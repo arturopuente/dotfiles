@@ -598,8 +598,11 @@ On in agent terminals and in their drawers (shell and the like)."
 
 (defun switchboard--clipboard ()
   "The system clipboard's text, or the newest kill."
-  (or (ignore-errors (gui-get-selection 'CLIPBOARD 'UTF8_STRING))
-      (current-kill 0 t)))
+  ;; The default type, STRING: on macOS, asking for UTF8_STRING gets "".
+  (let ((text (ignore-errors (gui-get-selection 'CLIPBOARD))))
+    (if (and (stringp text) (not (string-empty-p text)))
+        text
+      (current-kill 0 t))))
 
 (defun switchboard--terminal-command (action)
   "The command that does ACTION, from a `switchboard-terminal-keys' entry."
