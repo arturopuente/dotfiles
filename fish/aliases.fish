@@ -21,3 +21,14 @@ function emacs --wraps emacs
     test -x $bin; or set bin (command -s emacs)
     $bin --chdir $PWD $argv
 end
+
+# /usr/bin/top is setuid root, so it ignores $TERMINFO and ~/.terminfo and
+# can't find xterm-ghostty ("Error opening terminal"). /usr/share/terminfo is
+# SIP-protected, so hand it a TERM it already knows.
+function top --wraps top
+    if test "$TERM" = xterm-ghostty
+        TERM=xterm-256color command top $argv
+    else
+        command top $argv
+    end
+end
